@@ -72,6 +72,18 @@ struct Control {
     List{usz} head;
 }
 
+fn Control* Control.init(&self, Allocator allocator = mem, List{Data}* copy_from = null) 
+{
+    if (copy_from != null) {
+        self.data = copy_from;
+    } else {
+        self.data = List{Data}.init(allocator);
+    }
+    self.head = List{usz}.init(allocator);
+    self.head.push(0);
+    return self;
+}
+
 struct DumpElem {
     Control* ctrl;
     Stack* stck;
@@ -80,9 +92,30 @@ struct DumpElem {
 
 typedef Dump = inline List{DumpElem};
 
+struct Secd {
+    Stack stck;
+    Control ctrl;
+    Dump dump;
+    Env env;
+}
+
+fn Secd* Secd.init(&self, Allocator allocator = mem, List{Data}* copy_from = null) {
+    self.stck = List{Data}.init(allocator);
+    self.ctrl = Control.init(allocator, copy_from);
+    self.dump = List{DumpElem}.init(allocator);
+    self.env = List{List{Data}}.init(allocator);
+    return self;
+}
+
+fn int Secd.run(&self) {
+    Data* start = self.ctrl.getNext();
+    assert(start.tag == OPER);
+    return start.oper.opFN(0, &self.ctrl, &self.stck, &self.env, &self.dump);
+}
+
 alias Operation = fn int(usz ip, Control* ctrl, Stack* stck, Env* env, Dump* dmp);
 
-fn Data* getNext(Control* ctrl) {
+fn Data* Control.getNext(&self) {
     usz idx = ctrl.head[0];
     Data* cur = ctrl.data.get_ref(idx);
     for (int i = 1; i < ctrl.head.len; i++) {
@@ -90,10 +123,9 @@ fn Data* getNext(Control* ctrl) {
         idx = ctrl.head[i];
         cur = cur.list.get_ref(idx);
     }
-    ctrl.head.len[ctrl.head.len - 1] += 1;
+    ctrl.head[ctrl.head.len - 1] += 1;
     return cur;
 }
-
 
 fn int nilOper(usz ip, Control* ctrl, Stack* stck, Env* env, Dump* dmp) {
     Data nilVal = ofValue(ofNil());
@@ -205,16 +237,11 @@ enum Oper : char (Operation opFn)
     NIL     { &nilOper  },
     LD      { &ldOper   },
     LDC     { &ldcOper  },
-    LCF     { &ldfOper  },
+    LDF     { &ldfOper  },
     SEL     { &selOper  },
     JOIN    { &joinOper },
     AP      { &apOper   },
     RET     { &retOper  },
     DUM     { &dumOper  },
     RAP     { &rapOper  },
-}
-
-
-fn void main() {
-    io::printn("test compilation");
 }
