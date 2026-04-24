@@ -6,7 +6,6 @@ import std::io;
 import std::collections::list;
 import std::collections::linkedlist;
 import std::core::mem::allocator;
-import std::libc::libc;
 
 faultdef ARRAY_OVERFLOW;
 faultdef INVALID_TOKEN;
@@ -106,7 +105,7 @@ fn Token? new_tok(TokenType tt, String str, usz start) {
 struct Context {
     usz idx;
     usz len;
-    char[*] str_buf;
+    String str_buf;
 }
 
 fn char? Context.get(Context* ctx, usz ind) {
@@ -150,7 +149,13 @@ fn Token Context.emit(Context* ctx, TokenType tt) {
     usz start = ctx.idx - ctx.len;
     Context.skip(ctx);
     
-    return new_tok(tt, ctx.str_buf[start .. ctx.idx], start);
+    Token? newTok = new_tok(tt, ctx.str_buf[start .. ctx.idx], start);
+    if (cause excuse = newTok) {
+        io::printfn("Failed to emit new token for reason: %s, with text: %s", excuse, ctx.str_buf[start .. ctx.idx]);
+        panic();
+    } else {
+        return newTok;
+    }
 }
 
 fn List{Token}? process_tokens(String input) {
@@ -294,4 +299,12 @@ fn List{Data}? parse(String input) {
     }
     
     return new_ctrl;
+}
+
+void print_parse(List{Data} lst) {
+}
+
+void main(String[] args) {
+    String input = "LDC 15";
+    List{Data}
 }
