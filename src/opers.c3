@@ -20,9 +20,9 @@ enum OpCode : char
     RET  = 7,
     DUM  = 8,
     RAP  = 9,
-    PUTC = 10,
-    GETC = 11,
-    SYSC = 12,
+    // PUTC = 10,
+    // GETC = 11,
+    SYSC = 10,
 }
 
 enum ValueTag : char

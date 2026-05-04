@@ -9,6 +9,7 @@ import std::core::mem::allocator;
 
 faultdef ARRAY_OVERFLOW;
 faultdef INVALID_TOKEN;
+faultdef NO_TAG;
 
 enum TokenType : char {
     LPAREN,
@@ -16,13 +17,18 @@ enum TokenType : char {
     QUOTE,
     INSTR,
     INT_TOK,
-    FLOAT_TOK
+    FLOAT_TOK,
+    REF,
+    DEFDATA,
+    DEFCONST,
+    LABEL,
 }
 
 struct Token {
     TokenType type;
-    Data dat;
+    String? label;
     usz idx;
+    usz len;
 }
 
 fn Token? new_tok(TokenType tt, String str, usz start) {
@@ -47,14 +53,23 @@ fn Token? new_tok(TokenType tt, String str, usz start) {
             }
         case QUOTE:
             if (str.len >= 2 && str[0] == '\"' && str[str.len-1] == '\"') {
-                String str_data = str[1 .. str.len - 1];
+                String str_data = str[1 .. str.len - 2];
                 tok.dat = ofValue(ofStr(str_data));
                 return tok;
             } else {
                 return INVALID_TOKEN~;
             }
+        case DEFCONST:
+            if (str.len > 1 && str[0] == '@') {
+                OpCode opCode = NIL;
+                tok.dat = 
+                return tok;
+            } else {
+                return INVALID_TOKEN~;
+            }
+            break;
         case INSTR:
-            Oper opCode;
+            OpCode opCode;
             switch (str) {
 				case "NIL":
                     opCode = NIL;
