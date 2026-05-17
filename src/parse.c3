@@ -11,6 +11,7 @@ import std::core::mem::allocator;
 faultdef 
     ARRAY_OVERFLOW,
     INVALID_TOKEN,
+    INCONS_STATE,
     NO_TAG;
 
 enum TokenType : char {
@@ -22,6 +23,7 @@ enum TokenType : char {
     REF,
     LABEL,
     ATOM,
+    NIL_TOK,
 }
 
 struct Pair
@@ -41,7 +43,7 @@ struct Span {
 
 struct CodeData {
     TokenType tt;
-    bool initialized;
+    // bool initialized;
     union {
         String str;
         long iVal;
@@ -116,10 +118,16 @@ fn List{Span} scan_parens(String input) {
                             case '\"':
                                 if (!is_str) {
                                     is_str = true;
-                                    i++;
+                                    // i++ above --> trim quotes from string
+                                    // i++ below --> keep quotes in string
+                                    // i++;
                                     atom_span.fst = i;
+                                    i++;
                                 } else {
-                                    atom_span.snd = i-1;
+                                    // i-1 --> trim quotes from string
+                                    // i   --> keep quotes in string
+                                    // atom_span.snd = i-1;
+                                    atom_span.snd = i;
                                     spans.push(atom_span);
                                     if (oStck.len() > 0) {
                                         oStck[oStck.len() - 1].children.push(spans.len() - 1);
@@ -208,8 +216,16 @@ fn TokenType? data_type(String chunk) {
             return REF;
         case '\'':
             return ATOM;
-        default:
+        case '+':
+        case '-':
+        case '0' .. '9':
             return num_type(chunk);
+        default:
+            if (is_instruction(chunk)) {
+                return INSTR;
+            } else {
+                return INVALID_TOKEN~;
+            }
     }
 }
 
@@ -218,7 +234,43 @@ fn TokenType? data_type(String chunk) {
 // labels   -> reference to a hashmap of label names to the position of their data on disk
 // span_pos -> reference to a list of size: number of spans, where the i'th element holds
 //    the position of the i'th span on disk
-fn TokenType span_type(String input, Span* curspan, HashMap{String, usz}* labels, List{sz}* span_pos) {
+// fn TokenType span_type(String input, Span* curspan, HashMap{String, usz}* labels, List{sz}* span_pos) {
+//     // if we are processing this, it means that either it has no sub-expressions,
+//     // or that they have already been processed
+//     // further, there can be exactly two ways this can look:
+//     // #(symName (data))
+//     // (instruction [args])
+//     // 
+//     // in both cases, we have already written sub-expressions, and thus we know their 
+//     //  locations on disk
+//
+//     String span_txt = input[curspan.fst .. curspan.snd];
+//
+//     @pool() {
+//         // label
+//         if (span_txt[0] == '#') {
+//             String internal = input[curspan.fst+2 .. curspan.snd-1];
+//             String[] chunks = String.tsplit(internal, " ", internal.len, true);
+//         }
+//
+//         // regular list
+//         else if (span_txt[0] == '(') {
+//             String internal = input[curspan.fst+1 .. curspan.snd-1];
+//             String[] chunks = String.tsplit(internal, " ", internal.len, true);
+//
+//             // code list
+//             if (is_instruction(chunks[0])) {
+//             }
+//             // data list
+//             else {
+//                 TokenType? tok = data_type(chunk);
+//             }
+//         }
+//     };
+//     return LIST_START;
+// }
+
+fn TokenType? span_type(String input, Span* curspan, HashMap{String, usz}* labels) {
     // if we are processing this, it means that either it has no sub-expressions,
     // or that they have already been processed
     // further, there can be exactly two ways this can look:
@@ -227,31 +279,133 @@ fn TokenType span_type(String input, Span* curspan, HashMap{String, usz}* labels
     // 
     // in both cases, we have already written sub-expressions, and thus we know their 
     //  locations on disk
-
     String span_txt = input[curspan.fst .. curspan.snd];
 
-    @pool() {
-        // label
-        if (span_txt[0] == '#') {
-            String internal = input[curspan.fst+2 .. curspan.snd-1];
-            String[] chunks = String.tsplit(internal, " ", internal.len, true);
-        }
+    if (span_txt[0] == '#' && curspan.is_list) {
+        return LABEL;
+    }
+    else if (curspan.is_list) {
+        return LIST_START;
+    }
 
-        // regular list
-        else if (span_txt[0] == '(') {
-            String internal = input[curspan.fst+1 .. curspan.snd-1];
-            String[] chunks = String.tsplit(internal, " ", internal.len, true);
 
-            // code list
-            if (is_instruction(chunks[0])) {
-            }
-            // data list
-            else {
-                TokenType? tok = data_type(chunk);
-            }
+    // reference to label
+    if (span_txt[0] == '@') {
+        if (labels.has_key(span_txt[1..])) {
+            return REF;
+        } else {
+            return INVALID_TOKEN~;
         }
-    };
-    return LIST_START;
+    } 
+    // some other kind of token
+    else {
+        return data_type(span_txt);
+    }
+}
+
+// need to process labels BEFORE handling everything else
+// pass 0
+fn void? process_labels_pass(String input, List{Span}* spans, HashMap{String, usz}* labels, List{CodeData}* code) {}
+
+// pass 1
+fn void? write_constant_data_pass(String input, List{Span}* spans, HashMap{String, usz}* labels, List{CodeData}* code) {
+    usz len = spans.len();
+
+    for LOOP_CONST_SPANS: (usz i = 0; i < len; i++) {
+        Span* curspan = spans.get_ref(i)!;
+
+        TokenType typeof_span = span_type(input, curspan, labels)!;
+        CodeData code_dat = { .tt = typeof_span };
+
+        switch (typeof_span) {
+            case LIST_START:
+                if (curspan.children.len() > 0) {
+                    continue LOOP_CONST_SPANS;
+                } else {
+                    code_dat.tt = NIL_TOK;
+                }
+            case LABEL:
+                // @TODO: need to add stuff for this
+                continue LOOP_CONST_SPANS;
+            case QUOTE:
+                code_dat.str = input[curspan.fst+1 .. curspan.snd-1];
+            case INSTR:
+                code_dat.str = input[curspan.fst .. curspan.snd];
+            case INT_TOK:
+                code_dat.iVal = string::to_long(input[curspan.fst .. curspan.snd])!;
+            case FLOAT_TOK:
+                code_dat.fVal = string::to_double(input[curspan.fst .. curspan.snd])!;
+            case REF:
+                usz refd_ind = labels.get(input[curspan.fst+1 .. curspan.snd])!;
+                code_dat.arg1 = (isz)refd_ind;
+            case ATOM:
+                // hash this string later, might be useful before finally commiting it
+                code_dat.str = input[curspan.fst+1 .. curspan.snd];
+        }
+        usz write_ind = code.len();
+        code.push(code_dat);
+        curspan.w_off = (isz)write_ind;
+    }
+}
+
+// pass 2a
+// all instructions are s-expressions, so the lists that contain that should be treated
+// as being written to the same location as the instruction that they wrap
+//
+// this must happen WITH the data list pass, because lists of data will have their
+//  own write offset, and 
+
+fn void? collapse_instr_list_pass(String input, List{Span}* spans, HashMap{String, usz}* labels, List{CodeData}* code) {
+    usz len = spans.len();
+
+    for LOOP_INSTR_LISTS: (usz i = 0; i < len; i++) {
+        Span* curspan = spans.get_ref(i)!;
+
+        if (curspan.is_list && curspan.children.len() > 0) {
+            usz fst_loc = curspan.children.get(0)!;
+            Span* fst_child = spans.get_ref(fst_loc);
+            if (fst_child.w_off < 0) {
+                return INCONS_STATE~;
+            }
+            CodeData* fst_code = code.get_ref(fst_child.w_off)!;
+            if (fst_code.tt == INSTR) {
+                curspan.w_off = fst_child.w_off;
+            } else {
+                // data list
+                continue LOOP_INSTR_LISTS;
+            }
+        } else {
+            continue LOOP_INSTR_LISTS;
+        }
+    }
+}
+
+// pass 2b
+// all lists that wrap other lists or wrap data (symbols, strings, numbers, etc)
+// should actually be written to code
+fn void? write_data_lists_pass(String input, List{Span}* spans, HashMap{String, usz}* labels, List{CodeData}* code) {
+    usz len = spans.len();
+
+    for LOOP_DATA_LISTS: (usz i = 0; i < len; i++) {
+        Span* curspan = spans.get_ref(i)!;
+
+        if (curspan.is_list && curspan.children.len() > 0) {
+            usz fst_loc = curspan.children.get(0)!;
+            Span* fst_child = spans.get_ref(fst_loc);
+            if (fst_child.w_off < 0) {
+                return INCONS_STATE~;
+            }
+            CodeData* fst_code = code.get_ref(fst_child.w_off)!;
+            if (fst_code.tt == INSTR) {
+                curspan.w_off = fst_child.w_off;
+            } else {
+                // data list
+                continue LOOP_DATA_LISTS;
+            }
+        } else {
+            continue LOOP_DATA_LISTS;
+        }
+    }
 }
 
 fn void process_spans(List{Span} spans, String input) {
