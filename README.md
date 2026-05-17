@@ -2,6 +2,32 @@
 
 ## Notes
 - Serialize to array, write array to file
+- multiple passes to correctly generate array
+- output specification
+    - need header to specify sections and offsets of code
+    - if i want to be able to export a function, i.e., make it visible outside the bytecode binary blob and permit linking
+        - might use gperf for this --> generate a "perfect hash table", then maintain a table of exposed values
+            - of course, GPERF outputs to C code, so either I have to 
+                - parse the C code
+                - patch or write my own GPERF
+                - do something else
+        - should probably have separate data/code tables to avoid confusion
+    - linking will be static, because it would be insanity to try and have dynamic linking for this thing
+        - this will require parsing the headers of linked files and re-computing their hash tables
+        - will also require basically stepping through the linked list of code and writing it out in the output file
+        - this would need to be the first step
+    ```
+    {code entry point: usz}
+    {number of data symbols: usz}
+    {offset of data symbols: usz}
+    {number of code symbols: usz}
+    {offset of code symbols: usz}
+    {GPERF hash table : custom}
+    {symbol name: char[64]}
+    {symbol name: char[64]}
+    ...
+    {symbol name: char[64]}
+    ```
 
 ### Control flow
 - instruction data structures in array have:
