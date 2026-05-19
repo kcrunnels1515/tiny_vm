@@ -29,6 +29,12 @@
     {symbol name: char[64]}
     ```
 
+### List data structures
+- when doing a sequence of CONS operations, 
+    - list to prepend to is at top of the stack
+    - overwrite LIST marker with new data item
+    - push new LIST marker with updated info to the stack
+
 ### Control flow
 - instruction data structures in array have:
     - function pointer to operation

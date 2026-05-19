@@ -8,11 +8,14 @@ import std::collections::linkedlist;
 import std::collections::map;
 import std::core::mem::allocator;
 
+// typedef sz = inline sz;
+
 faultdef 
     ARRAY_OVERFLOW,
     INVALID_TOKEN,
     INCONS_STATE,
-    NO_TAG;
+    NO_TAG,
+    EXCESSIVE_ARGS;
 
 enum TokenType : char {
     LIST_START,
@@ -36,7 +39,7 @@ struct Span {
     usz fst;
     usz snd;
     int section;
-    isz w_off;
+    sz w_off;
     bool is_list;
     List{usz} children;
 }
@@ -49,8 +52,9 @@ struct CodeData {
         long iVal;
         double fVal;
     }
-    isz arg1;
-    isz arg2;
+    sz arg1;
+    sz arg2;
+    usz next;
 }
 
 fn List{Span} scan_parens(String input) {
@@ -312,7 +316,7 @@ fn void? write_constant_data_pass(String input, List{Span}* spans, HashMap{Strin
     usz len = spans.len();
 
     for LOOP_CONST_SPANS: (usz i = 0; i < len; i++) {
-        Span* curspan = spans.get_ref(i)!;
+        Span* curspan = spans.get_ref(i);
 
         TokenType typeof_span = span_type(input, curspan, labels)!;
         CodeData code_dat = { .tt = typeof_span };
@@ -332,19 +336,95 @@ fn void? write_constant_data_pass(String input, List{Span}* spans, HashMap{Strin
             case INSTR:
                 code_dat.str = input[curspan.fst .. curspan.snd];
             case INT_TOK:
-                code_dat.iVal = string::to_long(input[curspan.fst .. curspan.snd])!;
+                code_dat.iVal = String.to_long(input[curspan.fst .. curspan.snd])!;
             case FLOAT_TOK:
-                code_dat.fVal = string::to_double(input[curspan.fst .. curspan.snd])!;
+                code_dat.fVal = String.to_double(input[curspan.fst .. curspan.snd])!;
             case REF:
                 usz refd_ind = labels.get(input[curspan.fst+1 .. curspan.snd])!;
-                code_dat.arg1 = (isz)refd_ind;
+                code_dat.arg1 = (sz)refd_ind;
             case ATOM:
                 // hash this string later, might be useful before finally commiting it
                 code_dat.str = input[curspan.fst+1 .. curspan.snd];
+            default:
+                return INVALID_TOKEN~;
         }
         usz write_ind = code.len();
         code.push(code_dat);
-        curspan.w_off = (isz)write_ind;
+        curspan.w_off = (sz)write_ind;
+    }
+}
+
+// pass 2
+// dispatch on whether sub-list is a instruction or data list
+// list of data -> save as a list
+// list where first element is an instruction -> ensure arguments are saved, then 
+//      save list as instruction with arg fields set
+// 
+fn void? normalize_lists_pass(String input, List{Span}* spans, HashMap{String, usz}* labels, List{CodeData}* code) {
+    usz len = spans.len();
+
+    for LOOP_LISTS: (usz i = 0; i < len; i++) {
+        Span* curspan = spans.get_ref(i);
+
+        if (curspan.is_list && curspan.children.len() > 0) {
+            usz fst_loc = curspan.children.get(0);
+            Span* fst_child = spans.get_ref(fst_loc);
+            if (fst_child.w_off < 0) {
+                return INCONS_STATE~;
+            }
+            CodeData* fst_code = code.get_ref(fst_child.w_off);
+            if (fst_code.tt == INSTR) {
+                // treat current list as having same write offset as instruction
+                curspan.w_off = fst_child.w_off;
+                // an instruction will have a max of 2 arguments
+                switch (curspan.children.len()) {
+                    case 1:
+                        // instruction has no arguments
+                        continue LOOP_LISTS;
+                    case 2:
+                        Span* c_one = spans.get_ref(curspan.children[1]);
+                        fst_code.arg1 = c_one.w_off;
+                    case 3:
+                        Span* c_one = spans.get_ref(curspan.children[1]);
+                        Span* c_two = spans.get_ref(curspan.children[2]);
+                        fst_code.arg1 = c_one.w_off;
+                        fst_code.arg2 = c_two.w_off;
+                    default:
+                        return EXCESSIVE_ARGS~;
+                }
+            } else {
+                // data list
+                CodeData list_code = { .tt = LIST_START };
+                usz span_len = curspan.children.len();
+
+                Span* c_span = spans.get_ref(curspan.children[0]);
+                sz ind = 1;
+
+                // store first item in list in arg1 of list marker
+                list_code.arg1 = c_span.w_off;
+                // store length of the list in arg2 of list marker
+                list_code.arg2 = span_len;
+
+                while (ind < span_len) {
+                    // if not at the last element
+                    if (ind < (span_len - 1)) {
+                        // get span of next item in list
+                        Span* next = spans.get_ref(curspan.children[ind]);
+                        // retrieve code data of current item in list
+                        CodeData* c_code = code.get_ref(c_span.w_off);
+                        // save the write-offset of the next item as the "next" field of the current item
+                        c_code.next = next.w_off;
+                        // update pointer for next item
+                        c_span = next;
+                    }
+                    // leave the next field blank for the last element, as this will point to the NIL
+                    //  at index 0 in the code
+                    // else {}
+                }
+            }
+        } else {
+            continue LOOP_LISTS;
+        }
     }
 }
 
@@ -355,134 +435,134 @@ fn void? write_constant_data_pass(String input, List{Span}* spans, HashMap{Strin
 // this must happen WITH the data list pass, because lists of data will have their
 //  own write offset, and 
 
-fn void? collapse_instr_list_pass(String input, List{Span}* spans, HashMap{String, usz}* labels, List{CodeData}* code) {
-    usz len = spans.len();
+// fn void? collapse_instr_list_pass(String input, List{Span}* spans, HashMap{String, usz}* labels, List{CodeData}* code) {
+//     usz len = spans.len();
+//
+//     for LOOP_INSTR_LISTS: (usz i = 0; i < len; i++) {
+//         Span* curspan = spans.get_ref(i);
+//
+//         if (curspan.is_list && curspan.children.len() > 0) {
+//             usz fst_loc = curspan.children.get(0);
+//             Span* fst_child = spans.get_ref(fst_loc);
+//             if (fst_child.w_off < 0) {
+//                 return INCONS_STATE~;
+//             }
+//             CodeData* fst_code = code.get_ref(fst_child.w_off);
+//             if (fst_code.tt == INSTR) {
+//                 curspan.w_off = fst_child.w_off;
+//             } else {
+//                 // data list
+//                 continue LOOP_INSTR_LISTS;
+//             }
+//         } else {
+//             continue LOOP_INSTR_LISTS;
+//         }
+//     }
+// }
+//
+// // pass 2b
+// // all lists that wrap other lists or wrap data (symbols, strings, numbers, etc)
+// // should actually be written to code
+// fn void? write_data_lists_pass(String input, List{Span}* spans, HashMap{String, usz}* labels, List{CodeData}* code) {
+//     usz len = spans.len();
+//
+//     for LOOP_DATA_LISTS: (usz i = 0; i < len; i++) {
+//         Span* curspan = spans.get_ref(i);
+//
+//         if (curspan.is_list && curspan.children.len() > 0) {
+//             usz fst_loc = curspan.children.get(0);
+//             Span* fst_child = spans.get_ref(fst_loc);
+//             if (fst_child.w_off < 0) {
+//                 return INCONS_STATE~;
+//             }
+//             CodeData* fst_code = code.get_ref(fst_child.w_off);
+//             if (fst_code.tt == INSTR) {
+//                 curspan.w_off = fst_child.w_off;
+//             } else {
+//                 // data list
+//                 continue LOOP_DATA_LISTS;
+//             }
+//         } else {
+//             continue LOOP_DATA_LISTS;
+//         }
+//     }
+// }
 
-    for LOOP_INSTR_LISTS: (usz i = 0; i < len; i++) {
-        Span* curspan = spans.get_ref(i)!;
-
-        if (curspan.is_list && curspan.children.len() > 0) {
-            usz fst_loc = curspan.children.get(0)!;
-            Span* fst_child = spans.get_ref(fst_loc);
-            if (fst_child.w_off < 0) {
-                return INCONS_STATE~;
-            }
-            CodeData* fst_code = code.get_ref(fst_child.w_off)!;
-            if (fst_code.tt == INSTR) {
-                curspan.w_off = fst_child.w_off;
-            } else {
-                // data list
-                continue LOOP_INSTR_LISTS;
-            }
-        } else {
-            continue LOOP_INSTR_LISTS;
-        }
-    }
-}
-
-// pass 2b
-// all lists that wrap other lists or wrap data (symbols, strings, numbers, etc)
-// should actually be written to code
-fn void? write_data_lists_pass(String input, List{Span}* spans, HashMap{String, usz}* labels, List{CodeData}* code) {
-    usz len = spans.len();
-
-    for LOOP_DATA_LISTS: (usz i = 0; i < len; i++) {
-        Span* curspan = spans.get_ref(i)!;
-
-        if (curspan.is_list && curspan.children.len() > 0) {
-            usz fst_loc = curspan.children.get(0)!;
-            Span* fst_child = spans.get_ref(fst_loc);
-            if (fst_child.w_off < 0) {
-                return INCONS_STATE~;
-            }
-            CodeData* fst_code = code.get_ref(fst_child.w_off)!;
-            if (fst_code.tt == INSTR) {
-                curspan.w_off = fst_child.w_off;
-            } else {
-                // data list
-                continue LOOP_DATA_LISTS;
-            }
-        } else {
-            continue LOOP_DATA_LISTS;
-        }
-    }
-}
-
-fn void process_spans(List{Span} spans, String input) {
-    List{CodeData} codes;
-    HashMap{String, isz} labels;
-
-    codes.init(mem);
-    labels.init(mem);
-
-    usz length = spans.len();
-    // int i = (int)(length - 1);
-    List{sz} stck;
-    List{int} can_print;
-
-    // scan spans, and initialize stack with isolated sections
-    // in reverse order, so that the definition section gets processed 
-    // first --> labels are accessible at compilation time of main body
-    //
-    // set every index in can_print to -1
-    //  -1 --> not printed, not allowed to print
-    //  0  --> not printed, allowed to print
-    //  1  --> printed, not allowed to print
-    for (sz i = length - 1; i >= 0; i--) {
-        can_print.push(-1);
-        if (spans[i].section == 0) {
-            stck.push(i);
-        }
-    }
-    assert(can_print.len() == spans.len());
-
-    while(stck.len() > 0) {
-        // get last thing on stack
-        sz? ind = stck.last();
-        if (catch reason = ind) {
-            io::printf("Nothing on the stack while we expected it");
-            break;
-        }
-        // if it has children, and they haven't been printed yet, then 
-        // add those children to the stack
-        if (spans[ind].children.len() > 0 && can_print[ind] < 0) {
-            foreach (cid : spans[ind].children) {
-                stck.push(cid);
-            }
-            can_print[ind] = 0;
-        } else if (spans[ind].children.len() == 1 && can_print[ind] == 0) {
-            // replace list with single child
-            Span* single = spans.get_ref(ind);
-            if (is_instruction(input[single.fst .. single.snd])) {
-            }
-        } else if (can_print[ind] != 1) {
-            // if the current span has no children, it will fail on the previous
-            // condition, and fall through to here.
-            // in this case, we don't need to print anything else first, and so we can 
-            // print immediately
-            //
-            // otherwise, if this is a span with children and it's marked as available to
-            // print (it would be caught by the previous condition otherwise), then we 
-            // should print
-            String span_str = input[spans[ind].fst .. spans[ind].snd];
-            // if (input[spans[ind].fst] == '#') {
-            //     span_str = input[spans[ind].fst+2 .. spans[ind].snd-1];
-            // }
-            // else {
-            //     span_str = input[spans[ind].fst+1 .. spans[ind].snd-1];
-            // }
-            if (spans[ind].is_list) {
-                io::printfn("list %3d:\t%s", ind, span_str);
-            } else {
-                io::printfn("data %3d:\t%s", ind, span_str);
-            }
-            can_print[ind] = 1;
-            ulong? varname = stck.pop();
-        } else {
-            ulong? varname = stck.pop();
-        }
-    }
-}
+// fn void process_spans(List{Span} spans, String input) {
+//     List{CodeData} codes;
+//     HashMap{String, sz} labels;
+//
+//     codes.init(mem);
+//     labels.init(mem);
+//
+//     usz length = spans.len();
+//     // int i = (int)(length - 1);
+//     List{sz} stck;
+//     List{int} can_print;
+//
+//     // scan spans, and initialize stack with isolated sections
+//     // in reverse order, so that the definition section gets processed 
+//     // first --> labels are accessible at compilation time of main body
+//     //
+//     // set every index in can_print to -1
+//     //  -1 --> not printed, not allowed to print
+//     //  0  --> not printed, allowed to print
+//     //  1  --> printed, not allowed to print
+//     for (sz i = length - 1; i >= 0; i--) {
+//         can_print.push(-1);
+//         if (spans[i].section == 0) {
+//             stck.push(i);
+//         }
+//     }
+//     assert(can_print.len() == spans.len());
+//
+//     while(stck.len() > 0) {
+//         // get last thing on stack
+//         sz? ind = stck.last();
+//         if (catch reason = ind) {
+//             io::printf("Nothing on the stack while we expected it");
+//             break;
+//         }
+//         // if it has children, and they haven't been printed yet, then 
+//         // add those children to the stack
+//         if (spans[ind].children.len() > 0 && can_print[ind] < 0) {
+//             foreach (cid : spans[ind].children) {
+//                 stck.push(cid);
+//             }
+//             can_print[ind] = 0;
+//         } else if (spans[ind].children.len() == 1 && can_print[ind] == 0) {
+//             // replace list with single child
+//             Span* single = spans.get_ref(ind);
+//             if (is_instruction(input[single.fst .. single.snd])) {
+//             }
+//         } else if (can_print[ind] != 1) {
+//             // if the current span has no children, it will fail on the previous
+//             // condition, and fall through to here.
+//             // in this case, we don't need to print anything else first, and so we can 
+//             // print immediately
+//             //
+//             // otherwise, if this is a span with children and it's marked as available to
+//             // print (it would be caught by the previous condition otherwise), then we 
+//             // should print
+//             String span_str = input[spans[ind].fst .. spans[ind].snd];
+//             // if (input[spans[ind].fst] == '#') {
+//             //     span_str = input[spans[ind].fst+2 .. spans[ind].snd-1];
+//             // }
+//             // else {
+//             //     span_str = input[spans[ind].fst+1 .. spans[ind].snd-1];
+//             // }
+//             if (spans[ind].is_list) {
+//                 io::printfn("list %3d:\t%s", ind, span_str);
+//             } else {
+//                 io::printfn("data %3d:\t%s", ind, span_str);
+//             }
+//             can_print[ind] = 1;
+//             ulong? varname = stck.pop();
+//         } else {
+//             ulong? varname = stck.pop();
+//         }
+//     }
+// }
 
 fn void print_recurse(String input, List{Span} spans) {
     usz length = spans.len();
