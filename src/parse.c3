@@ -416,6 +416,24 @@ fn void? write_constant_data_pass(String input, List{Span}* spans, HashMap{Strin
     usz len = spans.len();
     // io::printn("Entering constant data pass phase...");
 
+    List{usz} stck;
+    List{int} can_write;
+
+    // scan spans, and initialize stack with isolated sections
+    // in reverse order, so that the definition section gets processed 
+    // first --> labels are accessible at compilation time of main body
+    //
+    // set every index in can_print to -1
+    //  -1 --> not printed, not allowed to print
+    //  0  --> not printed, allowed to print
+    //  1  --> printed, not allowed to print
+    for (sz i = len - 1; i >= 0; i--) {
+        can_print.push(-1);
+        if (spans[i].section == 0) {
+            stck.push(i);
+        }
+    }
+
     for LOOP_CONST_SPANS: (usz i = 0; i < len; i++) {
         Span* curspan = spans.get_ref(i);
         if (curspan.w_off >= 0) {
