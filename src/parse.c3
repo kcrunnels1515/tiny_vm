@@ -48,6 +48,11 @@ struct Span {
     List{usz} children;
 }
 
+struct SpanPair {
+    Span* real;
+    Span* copied;
+}
+
 struct CodeData {
     TokenType tt;
     // bool initialized;
@@ -322,8 +327,9 @@ fn TokenType? span_type(String input, Span* curspan, HashMap{String, Span*}* lab
 // fn void? process_labels_pass(String input, List{Span}* spans, HashMap{String, usz}* labels, List{CodeData}* code) {
 fn void? process_labels_pass(String input, List{Span}* spans, HashMap{String, Span*}* labels, List{CodeData}* code) {
     List{usz} label_stack;
-    List{Span*} label_spans;
+    List{Span} label_spans;
     List{Span*} spans_stck;
+    List{SpanPair} entry_stck;
     label_mode = true;
 
     usz len = spans.len();
@@ -340,16 +346,68 @@ fn void? process_labels_pass(String input, List{Span}* spans, HashMap{String, Sp
                 return INCONS_STATE~;
             }
             Span* name_span = spans.get_ref(curspan.children[0]);
-            name_span.ignore = true;
             Span* data_span = spans.get_ref(curspan.children[1]);
+            Span* iter = data_span;
+            name_span.ignore = true;
+            curspan.ignore = true;
             String name = input[name_span.fst .. name_span.snd];
             if (labels.set(name, data_span)) {
                 io::printfn("WARNING: redefinition of label %s", name);
             }
             // name_span.ignore = true;
             curspan.children.pop_first()!;
+            // add data into stack to process later, so that these can be written before the rest of the data
+            label_stack.push(curspan.children[0]);
+            spans_stck.push(iter);
+            while (spans_stck.len() > 0) {
+                iter = spans_stck.last()!;
+                if (iter.children.len() > 0 && !(iter.ignore)) {
+                    foreach (idx : iter.children) {
+                        Span* ch = spans.get_ref(idx);
+                        spans_stck.push(ch);
+                    }
+                    iter.ignore = true;
+                } else {
+                    spans_stck.pop()!;
+                    iter.w_off = label_spans.len();
+
+                    Span pp = { 
+                        .fst = iter.fst, 
+                        .snd = iter.snd, 
+                        .section = iter.section,
+                        .w_off = -1,
+                        .is_list = iter.is_list,
+                        .ignore = false};
+
+                    if (iter.children.len() > 0) {
+                        foreach (idx : iter.children) {
+                            Span* at_idx = spans.get_ref(idx);
+                            pp.children.push((usz)at_idx.w_off);
+                        }
+                    }
+
+                    label_spans.push(pp);
+
+                    // if the stack has been emptied, we're back to the 
+                    // entry point of the label, so we need to update the 
+                    // write offset of the span in the actual symbol table
+                    // so that when we reference the label later, it points to
+                    // the correct location in code
+                    if (spans_stck.len() == 0) {
+                        Span* w_on = label_spans.get_ref(iter.w_off);
+                        entry_stck.push((SpanPair){ .real = iter, .copied = w_on });
+                    }
+                }
+            }
         }
     }
+    write_constant_data_pass(input, &label_spans, labels, code)!;
+    normalize_lists_pass(input, &label_spans, labels, code)!;
+    
+    foreach (sp : entry_stck) {
+        sp.real.w_off = sp.copied.w_off;
+    }
+
     label_mode = false;
 }
 
@@ -364,7 +422,7 @@ fn void? write_constant_data_pass(String input, List{Span}* spans, HashMap{Strin
             continue LOOP_CONST_SPANS;
         }
         if (curspan.ignore) {
-            io::printfn("Ignoring span %s", input[curspan.fst .. curspan.snd]);
+            // io::printfn("Ignoring span %s", input[curspan.fst .. curspan.snd]);
             continue LOOP_CONST_SPANS;
         }
 
@@ -396,6 +454,7 @@ fn void? write_constant_data_pass(String input, List{Span}* spans, HashMap{Strin
                 } else if (ref_span.w_off < 0) {
                     return INCONS_STATE~;
                 } else {
+                    code_dat.str = input[curspan.fst+1 .. curspan.snd];
                     code_dat.arg1 = ref_span.w_off;
                 }
             case ATOM:
@@ -432,10 +491,14 @@ fn void? normalize_lists_pass(String input, List{Span}* spans, HashMap{String, S
             }
             usz fst_loc = curspan.children.get(0);
             Span* fst_child = spans.get_ref(fst_loc);
-            if (fst_child.w_off < 0 && !(fst_child.ignore)) {
-                io::printfn("Hit first incons");
-                return INCONS_STATE~;
-            }
+            if (fst_child.w_off < 0) {
+                if (fst_child.ignore) {
+                    continue LOOP_LISTS;
+                } else {
+                    io::printfn("Hit first incons from %s", input[fst_child.fst .. fst_child.snd]);
+                    return INCONS_STATE~;
+                }
+            } 
             CodeData* fst_code = code.get_ref(fst_child.w_off);
             // if (fst_child.is_list) {}
             if (fst_child.is_list || fst_code.tt != INSTR) {
@@ -745,7 +808,8 @@ fn void print_recurse(String input, List{Span} spans) {
 }
 
 fn void main(String[] args) {
-    String input = "(#(A 37) #(B ((LDC 4)))) ((LDC 37) (LDF ((LD (1 2)) (LDC 3) (MUL) (RET))) (AP))";
+    String input = "(#(A 37) #(B ((LDC 4)))) ((LDC 33) (LDF ((LD (1 2)) (LDC @A) (MUL) (RET))) (AP) (LDF @B) (AP))";
+    // String input = "(#(A 37) #(B ((LDC 4)))) ((LDC 37) (LDF ((LD (1 2)) (LDC 3) (MUL) (RET))) (AP))";
     // String input = "((LDC 37) (LDC \"big chungus\") (LDF ((LD (1 2)) (LDC 3) (MUL) (RET))) (AP))";
     List{Span} myspans = scan_parens(input);
     HashMap{String, usz} labels_inds;
@@ -754,6 +818,7 @@ fn void main(String[] args) {
     List{CodeData} code;
     code.push((CodeData) { .tt = NIL_TOK });
     code.init(mem);
+
     io::printf("Processing input: \'%s\'\n\n\n", input);
     
     if (catch reason = process_labels_pass(input, &myspans, &labels, &code)) {
@@ -777,47 +842,4 @@ fn void main(String[] args) {
     }
     
     // print_recurse(input, myspans);
-    
-    // String test_pref = "LDC 5";
-    // String[] chunks = String.tsplit(test_pref, " ", test_pref.len, true);
-    // for (int i = 0; i < chunks.len; i++) {
-    //     bool isInstr = is_instruction(chunks[i]);
-    //     if (isInstr) {
-    //         io::printfn("Instruction %d: %s", i+1, chunks[i]);
-    //     } else {
-    //         io::printfn("Non-instruction %d: %s", i+1, chunks[i]);
-    //     }
-    // }
-
-    // usz length = myspans.len();
-    // int i = (int)(length - 1);
-    //
-    // while (i >= 0) {
-    //     Span myspan = myspans[i];
-    //     String span_str = input[myspan.fst .. myspan.snd];
-    //     io::printfn("span %d:\t%s", i, span_str);
-    //     if (myspan.children.len() > 0) {
-    //         io::printf("\tChildren: ");
-    //         foreach (cid : myspan.children) {
-    //             io::printf("%d ", cid);
-    //         }
-    //         io::printf("\n");
-    //     }
-    //     i--;
-    //     // i++;
-    // }
 }
-
-// fn void main(String[] args) {
-//     String input = "(LDC 37) (LDF ((LD (1 2)) (LDC 3) (MUL) (RET))) (AP)";
-//     List{Pair} myspans = scan_parens(input);
-//     usz length = myspans.len();
-//     // int i = (int)(length - 1);
-//     int i = 0;
-//     while (i < (int)length) {
-//         String span = input[myspans[i].fst .. myspans[i].snd];
-//         io::printfn("span %d\t(%d, %d):\t%s", i, myspans[i].fst, myspans[i].snd, span);
-//         // i--;
-//         i++;
-//     }
-// }
