@@ -331,6 +331,7 @@ fn void? process_labels_pass(String input, List{Span}* spans, HashMap{String, Sp
     List{Span*} spans_stck;
     List{SpanPair} entry_stck;
     label_mode = true;
+    int section = 0;
 
     usz len = spans.len();
     for LOOP_LABELS: (usz i = 0; i < len; i++) {
@@ -347,6 +348,9 @@ fn void? process_labels_pass(String input, List{Span}* spans, HashMap{String, Sp
             }
             Span* name_span = spans.get_ref(curspan.children[0]);
             Span* data_span = spans.get_ref(curspan.children[1]);
+
+            section = data_span.section;
+
             Span* iter = data_span;
             name_span.ignore = true;
             curspan.ignore = true;
@@ -374,7 +378,7 @@ fn void? process_labels_pass(String input, List{Span}* spans, HashMap{String, Sp
                     Span pp = { 
                         .fst = iter.fst, 
                         .snd = iter.snd, 
-                        .section = iter.section,
+                        .section = iter.section - section,
                         .w_off = -1,
                         .is_list = iter.is_list,
                         .ignore = false};
@@ -408,6 +412,7 @@ fn void? process_labels_pass(String input, List{Span}* spans, HashMap{String, Sp
         sp.real.w_off = sp.copied.w_off;
     }
 
+    io::printn("Finished label processing pass");
     label_mode = false;
 }
 
@@ -428,13 +433,15 @@ fn void? write_constant_data_pass(String input, List{Span}* spans, HashMap{Strin
     //  0  --> not printed, allowed to print
     //  1  --> printed, not allowed to print
     for (sz i = len - 1; i >= 0; i--) {
-        can_print.push(-1);
-        if (spans[i].section == 0) {
+        can_write.push(-1);
+        Span* cspan = spans.get_ref(i);
+        if (cspan.section == 0) {
             stck.push(i);
         }
     }
-
-    for LOOP_CONST_SPANS: (usz i = 0; i < len; i++) {
+    
+    while LOOP_CONST_SPANS: (stck.len() > 0) {
+        usz i = stck.last()!;
         Span* curspan = spans.get_ref(i);
         if (curspan.w_off >= 0) {
             continue LOOP_CONST_SPANS;
@@ -450,21 +457,34 @@ fn void? write_constant_data_pass(String input, List{Span}* spans, HashMap{Strin
         switch (typeof_span) {
             case LIST_START:
                 if (curspan.children.len() > 0) {
+                    if (can_write[i] < 0) {
+                        foreach (cid : curspan.children) {
+                            stck.push(cid);
+                        }
+                        can_write[i] = 0;
+                    } else {
+                        stck.pop()!;
+                    }
                     continue LOOP_CONST_SPANS;
                 } else {
                     code_dat.tt = NIL_TOK;
+                    stck.pop()!;
                 }
             case LABEL:
                 // we have already processed labels, so we ignore them here
                 continue LOOP_CONST_SPANS;
             case QUOTE:
                 code_dat.str = input[curspan.fst+1 .. curspan.snd-1];
+                stck.pop()!;
             case INSTR:
                 code_dat.str = input[curspan.fst .. curspan.snd];
+                stck.pop()!;
             case INT_TOK:
                 code_dat.iVal = String.to_long(input[curspan.fst .. curspan.snd])!;
+                stck.pop()!;
             case FLOAT_TOK:
                 code_dat.fVal = String.to_double(input[curspan.fst .. curspan.snd])!;
+                stck.pop()!;
             case REF:
                 Span*? ref_span = labels.get(input[curspan.fst+1 .. curspan.snd]);
                 if (catch ref_err = ref_span) {
@@ -475,9 +495,11 @@ fn void? write_constant_data_pass(String input, List{Span}* spans, HashMap{Strin
                     code_dat.str = input[curspan.fst+1 .. curspan.snd];
                     code_dat.arg1 = ref_span.w_off;
                 }
+                stck.pop()!;
             case ATOM:
                 // hash this string later, might be useful before finally commiting it
                 code_dat.str = input[curspan.fst+1 .. curspan.snd];
+                stck.pop()!;
             default:
                 io::printfn("Got invalid token: %s", typeof_span.name);
                 return INVALID_TOKEN~;
@@ -513,7 +535,7 @@ fn void? normalize_lists_pass(String input, List{Span}* spans, HashMap{String, S
                 if (fst_child.ignore) {
                     continue LOOP_LISTS;
                 } else {
-                    io::printfn("Hit first incons from %s", input[fst_child.fst .. fst_child.snd]);
+                    io::printfn("Hit first incons from \'%s\', span %d", input[fst_child.fst .. fst_child.snd], fst_loc);
                     return INCONS_STATE~;
                 }
             } 
