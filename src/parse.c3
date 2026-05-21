@@ -443,11 +443,14 @@ fn void? write_constant_data_pass(String input, List{Span}* spans, HashMap{Strin
     while LOOP_CONST_SPANS: (stck.len() > 0) {
         usz i = stck.last()!;
         Span* curspan = spans.get_ref(i);
+        // io::printfn("Constant data pass on span %d, text: %s", i, input[curspan.fst .. curspan.snd]);
         if (curspan.w_off >= 0) {
+            stck.pop()!;
             continue LOOP_CONST_SPANS;
         }
         if (curspan.ignore) {
             // io::printfn("Ignoring span %s", input[curspan.fst .. curspan.snd]);
+            stck.pop()!;
             continue LOOP_CONST_SPANS;
         }
 
@@ -472,6 +475,7 @@ fn void? write_constant_data_pass(String input, List{Span}* spans, HashMap{Strin
                 }
             case LABEL:
                 // we have already processed labels, so we ignore them here
+                stck.pop()!;
                 continue LOOP_CONST_SPANS;
             case QUOTE:
                 code_dat.str = input[curspan.fst+1 .. curspan.snd-1];
@@ -523,6 +527,7 @@ fn void? normalize_lists_pass(String input, List{Span}* spans, HashMap{String, S
 
     for LOOP_LISTS: (usz i = 0; i < len; i++) {
         Span* curspan = spans.get_ref(i);
+        // io::printfn("List pass on span %d", i);
 
         if (curspan.is_list && curspan.children.len() > 0) {
             // skip over labels
@@ -856,8 +861,8 @@ fn void main(String[] args) {
     HashMap{String, Span*} labels;
     labels.init(mem);
     List{CodeData} code;
-    code.push((CodeData) { .tt = NIL_TOK });
     code.init(mem);
+    code.push((CodeData) { .tt = NIL_TOK });
 
     io::printf("Processing input: \'%s\'\n\n\n", input);
     
