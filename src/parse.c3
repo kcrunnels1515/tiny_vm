@@ -50,8 +50,8 @@ struct Span {
 }
 
 struct Spans {
-    List{Span} spans;
-    HashMap{String, Span*} labels;
+    List{Span}* spans;
+    HashMap{String, Span*}* labels;
 }
 
 fn Spans* Spans.init(&self) {
@@ -59,6 +59,7 @@ fn Spans* Spans.init(&self) {
     self.labels = mem::new(HashMap);
     self.spans.init(mem);
     self.labels.init(mem);
+    return self;
 }
 
 fn void Spans.destroy(&self) {
@@ -84,7 +85,7 @@ struct CodeData {
     usz next;
 }
 
-fn List{Span} scan_parens(String input, Spans data) {
+fn void? scan_parens(String input, Spans data) {
     List{Span} oStck;
     List{Span}* spans = data.spans;
     int depth = 0;
@@ -108,7 +109,7 @@ fn List{Span} scan_parens(String input, Spans data) {
             usz idx = i+1;
             while LOOP_LAB: (idx < input.len) {
                 switch (input[idx]) {
-                    case 'a' .. 'Z':
+                    case 'A' .. 'z':
                         idx++;
                     case ' ':
                     case '\n':
@@ -158,6 +159,7 @@ fn List{Span} scan_parens(String input, Spans data) {
                             case '\n':
                             case '\t':
                             case '\r':
+                            case ':':
                                 if (is_str) {
                                     i++;
                                 } else {
@@ -216,7 +218,7 @@ fn List{Span} scan_parens(String input, Spans data) {
             }
         }
     }
-    return spans;
+    // return spans;
 }
 
 fn bool is_instruction(String chunk) {
@@ -832,11 +834,15 @@ fn void? print_code(HashMap{String, Span*}* labels, List{CodeData}* code) {
 //     }
 // }
 
-fn void print_recurse(String input, List{Span} spans) {
-    usz length = spans.len();
+fn void print_recurse(String input, Spans spans) {
+    usz length = spans.spans.len();
     // int i = (int)(length - 1);
     List{usz} stck;
     List{int} can_print;
+
+    HashMap{String, Span*}.@each(*(spans.labels); String lab, Span* sp) {
+        io::printfn("Label %s = (%d, %d)", lab, sp.fst, sp.snd);
+    };
 
     // scan spans, and initialize stack with isolated sections
     // in reverse order, so that the definition section gets processed 
@@ -848,11 +854,12 @@ fn void print_recurse(String input, List{Span} spans) {
     //  1  --> printed, not allowed to print
     for (sz i = length - 1; i >= 0; i--) {
         can_print.push(-1);
-        if (spans[i].section == 0) {
+        Span* ms = spans.spans.get_ref(i);
+        if (ms.section == 0) {
             stck.push(i);
         }
     }
-    assert(can_print.len() == spans.len());
+    assert(can_print.len() == spans.spans.len());
     
     // stck.push(length - 1);
     // stck.push(0);
@@ -864,10 +871,11 @@ fn void print_recurse(String input, List{Span} spans) {
             io::printf("Nothing on the stack while we expected it");
             break;
         }
+        Span* cur = spans.spans.get_ref(ind);
         // if it has children, and they haven't been printed yet, then 
         // add those children to the stack
-        if (spans[ind].children.len() > 0 && can_print[ind] < 0) {
-            foreach (cid : spans[ind].children) {
+        if (cur.children.len() > 0 && can_print[ind] < 0) {
+            foreach (cid : cur.children) {
                 stck.push(cid);
             }
             can_print[ind] = 0;
@@ -880,14 +888,14 @@ fn void print_recurse(String input, List{Span} spans) {
             // otherwise, if this is a span with children and it's marked as available to
             // print (it would be caught by the previous condition otherwise), then we 
             // should print
-            String span_str = input[spans[ind].fst .. spans[ind].snd];
+            String span_str = input[cur.fst .. cur.snd];
             // if (input[spans[ind].fst] == '#') {
             //     span_str = input[spans[ind].fst+2 .. spans[ind].snd-1];
             // }
             // else {
             //     span_str = input[spans[ind].fst+1 .. spans[ind].snd-1];
             // }
-            if (spans[ind].is_list) {
+            if (cur.is_list) {
                 io::printfn("list %3d:\t%s", ind, span_str);
             } else {
                 io::printfn("data %3d:\t%s", ind, span_str);
@@ -901,38 +909,47 @@ fn void print_recurse(String input, List{Span} spans) {
 }
 
 fn void main(String[] args) {
-    String input = "(#(A 37) #(B ((LDC 4)))) ((LDC 33) (LDF ((LD (1 2)) (LDC @A) (MUL) (RET))) (AP) (LDF @B) (AP))";
+    String input = "37:A ((LDC 4)):B ((LDC 33) (LDF ((LD (1 2)) (LDC @A) (MUL) (RET))) (AP) (LDF @B) (AP))";
     // String input = "(#(A 37) #(B ((LDC 4)))) ((LDC 37) (LDF ((LD (1 2)) (LDC 3) (MUL) (RET))) (AP))";
     // String input = "((LDC 37) (LDC \"big chungus\") (LDF ((LD (1 2)) (LDC 3) (MUL) (RET))) (AP))";
-    List{Span} myspans = scan_parens(input);
-    HashMap{String, usz} labels_inds;
-    HashMap{String, Span*} labels;
-    labels.init(mem);
-    List{CodeData} code;
-    code.init(mem);
-    code.push((CodeData) { .tt = NIL_TOK });
-
-    io::printf("Processing input: \'%s\'\n\n\n", input);
-    
-    if (catch reason = process_labels_pass(input, &myspans, &labels, &code)) {
-        io::printfn("Processing labels pass failed with exit code: %s", reason);
+    // List{Span} myspans = scan_parens(input);
+    // HashMap{String, usz} labels_inds;
+    // HashMap{String, Span*} labels;
+    // labels.init(mem);
+    Spans myspans;
+    myspans.init();
+    if (catch reason = scan_parens(input, myspans)) {
+        io::printfn("Scanning parans failed with exit code: %s", reason);
         return;
     }
 
-    if (catch reason = write_constant_data_pass(input, &myspans, &labels, &code)) {
-        io::printfn("Constant data pass failed with exit code: %s", reason);
-        return;
-    }
+    print_recurse(input, myspans);
 
-    if (catch reason = normalize_lists_pass(input, &myspans, &labels, &code)) {
-        io::printfn("List normalization pass failed with exit code: %s", reason);
-        return;
-    }
-
-    if (catch reason = print_code(&labels, &code)) {
-        io::printfn("Printing code failed with exit code: %s", reason);
-        return;
-    }
+    // List{CodeData} code;
+    // code.init(mem);
+    // code.push((CodeData) { .tt = NIL_TOK });
+    //
+    // io::printf("Processing input: \'%s\'\n\n\n", input);
+    //
+    // if (catch reason = process_labels_pass(input, &myspans, &labels, &code)) {
+    //     io::printfn("Processing labels pass failed with exit code: %s", reason);
+    //     return;
+    // }
+    //
+    // if (catch reason = write_constant_data_pass(input, &myspans, &labels, &code)) {
+    //     io::printfn("Constant data pass failed with exit code: %s", reason);
+    //     return;
+    // }
+    //
+    // if (catch reason = normalize_lists_pass(input, &myspans, &labels, &code)) {
+    //     io::printfn("List normalization pass failed with exit code: %s", reason);
+    //     return;
+    // }
+    //
+    // if (catch reason = print_code(&labels, &code)) {
+    //     io::printfn("Printing code failed with exit code: %s", reason);
+    //     return;
+    // }
     
     // print_recurse(input, myspans);
 }
