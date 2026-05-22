@@ -16,7 +16,8 @@ faultdef
     NO_TAG,
     EXCESSIVE_ARGS,
     INVALID_TOKEN,
-    UNDEF_REF;
+    UNDEF_REF,
+    UNEXP_CHAR;
 
 enum TokenType : char (String name) {
     LIST_START  {"LIST_START"},
@@ -48,6 +49,23 @@ struct Span {
     List{usz} children;
 }
 
+struct Spans {
+    List{Span} spans;
+    HashMap{String, Span*} labels;
+}
+
+fn Spans* Spans.init(&self) {
+    self.spans = mem::new(List);
+    self.labels = mem::new(HashMap);
+    self.spans.init(mem);
+    self.labels.init(mem);
+}
+
+fn void Spans.destroy(&self) {
+    mem::free(self.spans);
+    mem::free(self.labels);
+}
+
 struct SpanPair {
     Span* real;
     Span* copied;
@@ -66,20 +84,50 @@ struct CodeData {
     usz next;
 }
 
-fn List{Span} scan_parens(String input) {
+fn List{Span} scan_parens(String input, Spans data) {
     List{Span} oStck;
-    List{Span} spans;
+    List{Span}* spans = data.spans;
     int depth = 0;
 
     for (usz i = 0; i < input.len; i++) {
         if (input[i] == '(') {
-            Span open = { .fst = i, .snd = 0, .section = depth, .w_off = -1, .is_list = true };
+            Span open = { 
+                .fst = i, 
+                .snd = 0, 
+                .section = depth, 
+                .w_off = -1, 
+                .is_list = true 
+            };
             if (i > 0 && input[i-1] == '#') {
                 open.fst = i-1;
             }
             oStck.push(open);
             depth++;
-        } else if (input[i] == ')') {
+        } 
+        else if (input[i] == ':') {
+            usz idx = i+1;
+            while LOOP_LAB: (idx < input.len) {
+                switch (input[idx]) {
+                    case 'a' .. 'Z':
+                        idx++;
+                    case ' ':
+                    case '\n':
+                    case '\t':
+                    case '\r':
+                    case '(':
+                        break LOOP_LAB;
+                    default:
+                        return UNEXP_CHAR~;
+                }
+            }
+            String lab_name = input[i+1 .. idx-1];
+            // data that this label pertains to will be the last item
+            // written to the spans list
+            Span* ref_span = spans.get_ref(spans.len() - 1);
+            data.labels.set(lab_name, ref_span);
+            i = idx;
+        }
+        else if (input[i] == ')') {
             Span? own = oStck.pop();
             if (catch reason = own) {
                 io::printfn("Nothing in open paren stack");
