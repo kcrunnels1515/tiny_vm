@@ -29,6 +29,7 @@ enum TokenType : char (String name) {
     LABEL		{"LABEL"},
     ATOM		{"ATOM"},
     NIL_TOK		{"NIL_TOK"},
+    // VECTOR		{"VECTOR"},
 }
 
 bool label_mode = false;
@@ -45,6 +46,7 @@ struct Span {
     int section;
     sz w_off;
     bool is_list;
+    // bool is_vector;
     bool ignore;
     bool ref;
     List{usz} children;
@@ -92,6 +94,11 @@ struct CodeData {
     sz arg1;
     sz arg2;
     usz next;
+}
+
+struct CodeMeta {
+    List{CodeData} code;
+    HashMap{String, usz};
 }
 
 fn void? scan_parens(String input, Spans data) {
@@ -272,8 +279,13 @@ fn bool is_instruction(String chunk) {
         case String.starts_with(chunk, "CDR"):
         case String.starts_with(chunk, "CONS"):
         case String.starts_with(chunk, "EQ"):
+        case String.starts_with(chunk, "LEQ"):
+        case String.starts_with(chunk, "GEQ"):
+        case String.starts_with(chunk, "LT"):
+        case String.starts_with(chunk, "GT"):
         case String.starts_with(chunk, "ATOM"):
         case String.starts_with(chunk, "STOP"):
+        case String.starts_with(chunk, "SYSC"):
             return true;
         default:
             return false;
@@ -873,7 +885,7 @@ fn List{CodeData}? parse_input(String input, Spans myspans) {
 }
 
 fn void main(String[] args) {
-    String input = "22:Z ((LDC 4)):B 37:A ((LDC 33) (LDF ((LD (1 2)) (LDC @A) (MUL) (RET))) (AP) (LDF @B) (AP)):entry";
+    String input = "\"big fat bongus\":Z ((LDC 4)):B 37:A ((LDC 33) (LDF ((LD (1 2)) (LDC @A) (MUL) (RET))) (AP) (LDF @B) (AP)):entry";
     // String input = "(#(A 37) #(B ((LDC 4)))) ((LDC 37) (LDF ((LD (1 2)) (LDC 3) (MUL) (RET))) (AP))";
     // String input = "((LDC 37) (LDC \"big chungus\") (LDF ((LD (1 2)) (LDC 3) (MUL) (RET))) (AP))";
     // List{Span} myspans = scan_parens(input);

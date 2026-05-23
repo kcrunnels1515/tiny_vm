@@ -18,6 +18,13 @@
 
 
 ### Saving
+- Saving strings and vector data as code chunks is fucking stupid
+    - instead, keep a vector data table
+    - serialize the vector table separately from the code, then let each code chunk that need to refer to it
+        just store the offset of the table entry
+    - only atomic data is allowed in a vector --> integers, floats, etc
+    - this is a later project, for now I will just store strings
+        - in the mean time i will try to keep a generic interface
 - Serialize to array, write array to file
 - multiple passes to correctly generate array
 - output specification
