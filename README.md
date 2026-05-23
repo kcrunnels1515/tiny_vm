@@ -1,6 +1,23 @@
 # SECD Abstract Machine in C3
 
 ## Notes
+### Handling labels and references
+- NOTE: references can never occur as part of a data list, only as an argument to 
+    an instruction
+- maintain a list of span pointer pairs
+    - every time we hit a reference, we 
+        - mark as ignored
+        - look up the span it references
+        - retrieve the instruction span that takes the reference as an argument
+        - push the pair into the pair list
+
+- after doing other passes, we then iterate the pair list
+    - can only store data at labels, not instructions (ie, we can't rename instructions with `LDC:bingus`) so references will always by arguments to instructions
+    - get write offset of the referenced span, since at this point in execution it will be determined
+    - update the argument index of the instruction
+
+
+### Saving
 - Serialize to array, write array to file
 - multiple passes to correctly generate array
 - output specification
