@@ -566,6 +566,7 @@ fn void? write_constant_data_pass(String input, Spans span_data, List{CodeData}*
                 if (catch ref_err = ref_span) {
                     return UNDEF_REF~;
                 } else if (ref_span.w_off < 0) {
+                    io::printfn("Data for label %s not defined", input[curspan.fst+1 .. curspan.snd]);
                     return INCONS_STATE~;
                 } else {
                     code_dat.str = input[curspan.fst+1 .. curspan.snd];
@@ -920,9 +921,9 @@ fn void print_recurse(String input, Spans spans) {
             //     span_str = input[spans[ind].fst+1 .. spans[ind].snd-1];
             // }
             if (cur.is_list) {
-                io::printfn("list %3d:\t%s", ind, span_str);
+                io::printfn("list %3d (section %d):\t%s", ind, cur.section, span_str);
             } else {
-                io::printfn("data %3d:\t%s", ind, span_str);
+                io::printfn("data %3d (section %d):\t%s", ind, cur.section, span_str);
             }
             can_print[ind] = 1;
             ulong? varname = stck.pop();
@@ -930,6 +931,23 @@ fn void print_recurse(String input, Spans spans) {
             ulong? varname = stck.pop();
         }
     }
+}
+
+fn List{CodeData}? parse_input(String input, Spans myspans) {
+    List{CodeData} code;
+    code.init(mem);
+    code.push((CodeData) { .tt = NIL_TOK });
+
+    io::printf("Processing input: \'%s\'\n\n\n", input);
+
+    scan_parens(input, myspans)!;
+
+    HashMap{String, Span*}.@each(*(myspans.labels); String lab, Span* sp) {
+    }
+
+    write_constant_data_pass(input, myspans, &code)!;
+    normalize_lists_pass(input, myspans, &code)!;
+    print_code(myspans.labels, &code)!;
 }
 
 fn void main(String[] args) {
@@ -947,33 +965,8 @@ fn void main(String[] args) {
         return;
     }
 
-    // print_recurse(input, myspans);
+    print_recurse(input, myspans);
 
-    List{CodeData} code;
-    code.init(mem);
-    code.push((CodeData) { .tt = NIL_TOK });
-
-    io::printf("Processing input: \'%s\'\n\n\n", input);
-    //
-    // if (catch reason = process_labels_pass(input, &myspans, &labels, &code)) {
-    //     io::printfn("Processing labels pass failed with exit code: %s", reason);
-    //     return;
-    // }
-    //
-    if (catch reason = write_constant_data_pass(input, myspans, &code)) {
-        io::printfn("Constant data pass failed with exit code: %s", reason);
-        return;
-    }
-
-    if (catch reason = normalize_lists_pass(input, myspans, &code)) {
-        io::printfn("List normalization pass failed with exit code: %s", reason);
-        return;
-    }
-
-    if (catch reason = print_code(myspans.labels, &code)) {
-        io::printfn("Printing code failed with exit code: %s", reason);
-        return;
-    }
     
     // print_recurse(input, myspans);
 }
