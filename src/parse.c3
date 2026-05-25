@@ -97,8 +97,8 @@ struct CodeData {
 }
 
 struct CodeMeta {
-    List{CodeData} code;
-    HashMap{String, usz} labels;
+    List{CodeData}* code;
+    HashMap{String, usz}* labels;
 }
 
 fn void? scan_parens(String input, Spans data) {
@@ -869,49 +869,74 @@ fn void print_recurse(String input, Spans spans) {
     }
 }
 
-fn List{CodeData}? parse_input(String input, Spans myspans) {
-    List{CodeData} code;
+// fn List{CodeData}? parse_input(String input, Spans myspans) {
+//     List{CodeData} code;
+//     code.init(mem);
+//     code.push((CodeData) { .tt = NIL_TOK });
+//
+//     io::printf("Processing input: \'%s\'\n\n\n", input);
+//
+//     scan_parens(input, myspans)!;
+//     write_constant_data_pass(input, myspans, &code)!;
+//     normalize_lists_pass(input, myspans, &code)!;
+//     resolve_refs_pass(input, myspans, &code)!;
+//
+//     return code;
+// }
+
+fn void? translate_labels(Spans myspans, HashMap{String, usz}* label_locs) {
+    HashMap{String, Span*}.@each(*(myspans.labels); String name, Span* sp) {
+        label_locs.set(name, sp.w_off);
+    };
+}
+
+fn CodeMeta? parse_input(String input, Spans myspans) {
+    List{CodeData}* code = mem::new(List);
+    HashMap{String, usz}* labeled = mem::new(HashMap);
     code.init(mem);
+    labeled.init(mem);
+
     code.push((CodeData) { .tt = NIL_TOK });
 
     io::printf("Processing input: \'%s\'\n\n\n", input);
 
     scan_parens(input, myspans)!;
-    write_constant_data_pass(input, myspans, &code)!;
-    normalize_lists_pass(input, myspans, &code)!;
-    resolve_refs_pass(input, myspans, &code)!;
+    write_constant_data_pass(input, myspans, code)!;
+    normalize_lists_pass(input, myspans, code)!;
+    resolve_refs_pass(input, myspans, code)!;
+    translate_labels(myspans, labeled)!;
 
-    return code;
+    return (CodeMeta){ .code = code, .labels = labeled };
 }
 
-fn void main(String[] args) {
-    String input = "\"big fat bongus\":Z ((LDC 4)):B 37:A ((LDC 33) (LDF ((LD (1 2)) (LDC @A) (MUL) (RET))) (AP) (LDF @B) (AP)):entry";
-    // String input = "(#(A 37) #(B ((LDC 4)))) ((LDC 37) (LDF ((LD (1 2)) (LDC 3) (MUL) (RET))) (AP))";
-    // String input = "((LDC 37) (LDC \"big chungus\") (LDF ((LD (1 2)) (LDC 3) (MUL) (RET))) (AP))";
-    // List{Span} myspans = scan_parens(input);
-    // HashMap{String, usz} labels_inds;
-    // HashMap{String, Span*} labels;
-    // labels.init(mem);
-    Spans myspans;
-    myspans.init();
-    // if (catch reason = scan_parens(input, myspans)) {
-    //     io::printfn("Scanning parans failed with exit code: %s", reason);
-    //     return;
-    // }
-
-    List{CodeData}? code = parse_input(input, myspans);
-    if (catch reason = code) {
-        io::printfn("Parsing failed with reason \'%s\'", reason);
-        return;
-    }
-
-    if (catch reason = print_code(myspans.labels, &code)) {
-        io::printfn("Printing failed with reason \'%s\'", reason);
-        return;
-    }
-
-    // print_recurse(input, myspans);
-
-    
-    // print_recurse(input, myspans);
-}
+// fn void main(String[] args) {
+//     String input = "\"big fat bongus\":Z ((LDC 4)):B 37:A ((LDC 33) (LDF ((LD (1 2)) (LDC @A) (MUL) (RET))) (AP) (LDF @B) (AP)):entry";
+//     // String input = "(#(A 37) #(B ((LDC 4)))) ((LDC 37) (LDF ((LD (1 2)) (LDC 3) (MUL) (RET))) (AP))";
+//     // String input = "((LDC 37) (LDC \"big chungus\") (LDF ((LD (1 2)) (LDC 3) (MUL) (RET))) (AP))";
+//     // List{Span} myspans = scan_parens(input);
+//     // HashMap{String, usz} labels_inds;
+//     // HashMap{String, Span*} labels;
+//     // labels.init(mem);
+//     Spans myspans;
+//     myspans.init();
+//     // if (catch reason = scan_parens(input, myspans)) {
+//     //     io::printfn("Scanning parans failed with exit code: %s", reason);
+//     //     return;
+//     // }
+//
+//     List{CodeData}? code = parse_input(input, myspans);
+//     if (catch reason = code) {
+//         io::printfn("Parsing failed with reason \'%s\'", reason);
+//         return;
+//     }
+//
+//     if (catch reason = print_code(myspans.labels, &code)) {
+//         io::printfn("Printing failed with reason \'%s\'", reason);
+//         return;
+//     }
+//
+//     // print_recurse(input, myspans);
+//
+//
+//     // print_recurse(input, myspans);
+// }

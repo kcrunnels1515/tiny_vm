@@ -6,6 +6,7 @@ import std::collections::linkedlist;
 import std::collections::map;
 import std::core::mem::allocator;
 import std::io::file;
+import std::hash::md5;
 import libc;
 
 import tiny_vm::parse;
@@ -54,16 +55,16 @@ enum OpCode : char (String codename)
 
 enum ValueTag : char
 {
-    NIL   = 0,
-    INT   = 1,
-    STR   = 2,
-    FLOAT = 3,
-    INSTR = 4,
-    LIST  = 5,
-    SYMB  = 6,
+    NIL,
+    INT,
+    STR,
+    FLOAT,
+    INSTR,
+    LIST,
+    SYMB,
 }
 
-const CHUNKLEN = 15;
+const CHUNKLEN = 16;
 
 bitstruct Code : char[CHUNKLEN] @overlap
 {
@@ -88,19 +89,23 @@ bitstruct Code : char[CHUNKLEN] @overlap
     // // marks the last element
     // bool term  : 18;
 
+    // extra data can be placed in here
+    char extra : 24..31;
+
+    // index of next item in list containing data
+    sz  next : 32..63;
+
     // 4-byte indices of arguments for INSTR Codes, 
     // the first element of the string stores the length of the string
     // in bytes in arg1, and the length of the string in Codes in arg2.
     // then following Codes are cast to char arrays.
-    sz  arg1 : 24..55;
-    sz  arg2 : 56..87;
+    sz  arg1 : 64..95;
+    sz  arg2 : 96..127;
 
-    // other is for storing integers and floats, so it overlaps
+    // data is for storing integers and floats, so it overlaps
     // arg1 and arg2
     // if this is an ATOM (symbol value) this contains a hash of the string
-    ulong other : 24..87;
-    // index of next item in list containing data
-    sz  next : 88..119;
+    ulong data : 64..127;
 }
 
 /* FORMAT OF SERIALIZED FILE:
@@ -114,16 +119,15 @@ bitstruct Code : char[CHUNKLEN] @overlap
     - Code
     
 */
-bitstruct Header : char[20] {
+
+bitstruct Header : char[15] {
     // number of labeled code chunks
-    uint labels  : 0..31;
+    uint l_len  : 0..31;
     // offset of entry point, if it exists
     // value of -1 if this is a library (no entry point)
     sz entry     : 32..95;
     // number of labels
-    uint l_len   : 96..127;
-    // offset of label table
-    uint l_tbl   : 128..159;
+    uint l_tbl   : 96..119;
 }
 
 struct Label {
@@ -137,42 +141,63 @@ struct Serial {
     usz count;
     usz strs_len;
     usz labels_len;
-    usz label_off;
+    usz labels_off;
 }
 
-fn Code data_to_code(CodeData* cd, usz off) {
+fn ulong hashSym(String str) {
+    ulong res = 0;
+    char[] bytes = @to_bytes(ulong, res);
+    char[16] hRes = md5::hash(str);
+
+    for (int i = 0; i < 8; i++) {
+        bytes[i] = hRes[i] ^ hRes[i+8];
+    }
+    return res;
+}
+
+fn Code? data_to_code(CodeData* cd, usz off) {
     Code tw;
+    ulong* tw_ptr = (ulong*)&tw;
+    void* data_ptr = (void*)(tw_ptr+1);
+
     switch (cd.tt) {
         case TokenType.LIST_START:
-            tw.type = LIST;
-        case TokenType.QUOTE:
-            tw.type = STR;
-        case TokenType.INSTR:
-            tw.type = INSTR;
-            tw.op = @enum_lookup(OpCode, "name", cd.str);
+            tw.type = ValueTag.LIST.ordinal;
             tw.arg1 = cd.arg1 + off;
             tw.arg2 = cd.arg2 + off;
-            tw.next = cd.next + off;
+        case TokenType.QUOTE:
+            tw.type = ValueTag.STR.ordinal;
+            // location of string value in string table is
+            // stored in iVal of codedata
+            tw.data = cd.iVal;
+        case TokenType.INSTR:
+            tw.type = ValueTag.INSTR.ordinal;
+            OpCode op = runtime::@enum_lookup(OpCode, "codename", cd.str)!;
+            tw.op = op.ordinal;
+            tw.arg1 = cd.arg1 + off;
+            tw.arg2 = cd.arg2 + off;
         case TokenType.INT_TOK:
-            tw.type = INT;
-            tw.other = cd.iVal;
-            tw.next = cd.next + off;
+            tw.type = ValueTag.INT.ordinal;
+            tw.data = cd.iVal;
         case TokenType.FLOAT_TOK:
-            tw.type = FLOAT;
-            tw.other = cd.fVal;
-            tw.next = cd.next + off;
+            tw.type = ValueTag.FLOAT.ordinal;
+            double* f_ptr = (double*)data_ptr;
+            *f_ptr = cd.fVal;
         case TokenType.REF:  
-            assert(0 && "Unreachable");
         case TokenType.LABEL:
-            assert(0 && "Unreachable");
+            io::printfn("Unreachable");
+            builtin::panic("Trying to generate code for REF or LABEL", "serialize.c3", "data_to_code()",189);
         case TokenType.ATOM:
-            tw.type = SYMB;
+            tw.type = ValueTag.SYMB.ordinal;
+            tw.data = hashSym(cd.str);
         case TokenType.NIL_TOK:
-            tw.type = NIL;
+            tw.type = ValueTag.NIL.ordinal;
     }
+    tw.next = cd.next + off;
+    return tw;
 }
 
-fn Serial*? Serial.init(&self, String output, char[] buf) {
+fn Serial*? Serial.init(&self, String output) {
     self.output = file::open(output, "w+")!;
     // self.wb.init(&(self.output), buf)!;
     self.count = 0;
@@ -216,23 +241,33 @@ fn void? Serial.write_strings(&self, StrTable strs) {
 fn void? Serial.write_labels(&self, CodeMeta* code) {
     self.labels_off = self.count;
 
-    HashMap{String, usz}.@each(code.labels; String name, usz loc) {
-        char[32] name_buf = { 0 };
+    HashMap{String, usz}.@each(*code.labels; String name, usz loc) {
+        char[32] name_buf;
         libc::memcpy(&name_buf, &name, name.len);
         char[] loc_bytes = @to_bytes(usz, loc);
         sz nm_sz = self.output.write(&name_buf)!;
         sz loc_sz = self.output.write(loc_bytes)!;
         self.count += (usz)(nm_sz + loc_sz);
         self.labels_len += 1;
-    }
+    };
 }
 
 fn void? Serial.write_code(&self, CodeMeta* code) {
     usz len = code.code.len();
+    usz code_off = self.count;
 
     for (usz i = 0; i < len; i++) {
         CodeData* c = code.code.get_ref(i);
+        Code wc = data_to_code(c, code_off)!;
+        char[] bytes = @to_bytes(Code, wc);
+        sz w_sz = self.output.write(bytes)!;
+        self.count += (usz)w_sz;
     }
+}
+
+fn void? Serial.save(&self) {
+    self.output.flush()!;
+    self.output.close()!;
 }
 
 typedef StrTable = inline List{CodeData*};
@@ -248,7 +283,7 @@ fn void? StrTable.save(&self, Serial* wb) {
 fn StrTable build_string_table(CodeMeta code) {
     usz len = code.code.len();
     StrTable strs;
-    strs.init();
+    strs.init(mem);
 
     for (usz i = 0; i < len; i++) {
         CodeData* c_dat = code.code.get_ref(i);
