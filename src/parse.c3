@@ -98,7 +98,7 @@ struct CodeData {
 
 struct CodeMeta {
     List{CodeData} code;
-    HashMap{String, usz};
+    HashMap{String, usz} labels;
 }
 
 fn void? scan_parens(String input, Spans data) {
