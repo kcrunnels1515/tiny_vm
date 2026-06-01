@@ -120,6 +120,12 @@ bitstruct Code : char[CHUNKLEN] @overlap
     
 */
 
+fn Code nil_val() {
+    Code res;
+    res.type = ValueTag.NIL.ordinal;
+    return res;
+}
+
 bitstruct Header : char[15] {
     // number of labeled code chunks
     uint l_len  : 0..31;
@@ -155,7 +161,7 @@ fn ulong hashSym(String str) {
     return res;
 }
 
-fn Code? data_to_code(CodeData* cd, usz off) {
+fn Code? data_to_code(CodeData* cd) {
     Code tw;
     ulong* tw_ptr = (ulong*)&tw;
     void* data_ptr = (void*)(tw_ptr+1);
@@ -163,8 +169,8 @@ fn Code? data_to_code(CodeData* cd, usz off) {
     switch (cd.tt) {
         case TokenType.LIST_START:
             tw.type = ValueTag.LIST.ordinal;
-            tw.arg1 = cd.arg1 + off;
-            tw.arg2 = cd.arg2 + off;
+            tw.arg1 = cd.arg1;
+            tw.arg2 = cd.arg2;
         case TokenType.QUOTE:
             tw.type = ValueTag.STR.ordinal;
             // location of string value in string table is
@@ -174,8 +180,8 @@ fn Code? data_to_code(CodeData* cd, usz off) {
             tw.type = ValueTag.INSTR.ordinal;
             OpCode op = runtime::@enum_lookup(OpCode, "codename", cd.str)!;
             tw.op = op.ordinal;
-            tw.arg1 = cd.arg1 + off;
-            tw.arg2 = cd.arg2 + off;
+            tw.arg1 = cd.arg1;
+            tw.arg2 = cd.arg2;
         case TokenType.INT_TOK:
             tw.type = ValueTag.INT.ordinal;
             tw.data = cd.iVal;
@@ -193,7 +199,7 @@ fn Code? data_to_code(CodeData* cd, usz off) {
         case TokenType.NIL_TOK:
             tw.type = ValueTag.NIL.ordinal;
     }
-    tw.next = cd.next + off;
+    tw.next = cd.next;
     return tw;
 }
 
@@ -226,16 +232,18 @@ fn void? Serial.write_header(&self, Header h) {
 
 fn void? Serial.write_strings(&self, StrTable strs) {
     usz len = strs.len();
-    usz cur_count = self.count;
+    usz str_off = Header::size;
     for (usz i = 0; i < len; i++) {
         CodeData* c = strs.get(i);
         String str = c.str;
-        c.arg1 = self.count;
-        c.arg2 = str.len;
+        io::printfn("Saving string: \"%s\"", str);
         sz str_len = self.output.write(str)!;
+        c.arg1 = str_off;
+        c.arg2 = str.len;
         self.count += (usz)str_len;
+        str_off += str_len;
     }
-    self.strs_len = (self.count - cur_count);
+    self.strs_len = (self.count - str_off);
 }
 
 fn void? Serial.write_labels(&self, CodeMeta* code) {
@@ -258,7 +266,8 @@ fn void? Serial.write_code(&self, CodeMeta* code) {
 
     for (usz i = 0; i < len; i++) {
         CodeData* c = code.code.get_ref(i);
-        Code wc = data_to_code(c, code_off)!;
+        Code wc = data_to_code(c)!;
+        // Code wc = data_to_code(c, code_off)!;
         char[] bytes = @to_bytes(Code, wc);
         sz w_sz = self.output.write(bytes)!;
         self.count += (usz)w_sz;

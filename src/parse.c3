@@ -595,6 +595,7 @@ fn void? write_constant_data_pass(String input, Spans span_data, List{CodeData}*
                 //     code_dat.arg1 = ref_span.w_off;
                 // }
                 stck.pop()!;
+                continue LOOP_CONST_SPANS;
             case ATOM:
                 // hash this string later, might be useful before finally commiting it
                 code_dat.str = input[curspan.fst+1 .. curspan.snd];

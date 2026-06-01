@@ -1,6 +1,30 @@
 # SECD Abstract Machine in C3
 
 ## Notes
+### The stack and moveable data
+- the stack and environment should track their own SIZE, but they should also keep track 
+    of the logical number of items that they contain
+    - i.e., if there is a list of three atomic values on the stack, then we have a 
+        logical size of 1, and a real size of 4 (three data values, one list value)
+    - note that the list marker value will always be on top of its data items: thus
+        we need to have a state-machine that will recursively copy linked lists
+    - this is helped by us storing the length of each list in it's list marker
+
+### Closures
+- we need special `Code` value tags the indicate the value we are storing is a closure
+    - `FUNC` and `ENV` code tags
+    - store the closure as a list of two elements
+    - `FUNC` block stores:
+        - offset of 
+
+### Applying functions
+- We need to know how many variables there are in each function
+    - post processing on CodeData?
+    - assume that the user passes the correct number of arguments,
+        then maintain a stack of closure indices on the stack
+        - to create the new environment, we just pop off `Code` chunks until we
+            reach the first closure
+
 ### Handling labels and references
 - NOTE: references can never occur as part of a data list, only as an argument to 
     an instruction
