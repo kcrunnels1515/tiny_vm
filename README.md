@@ -15,7 +15,7 @@
     - `FUNC` and `ENV` code tags
     - store the closure as a list of two elements
     - `FUNC` block stores:
-        - offset of 
+        - arg1: offset of code
 
 ### Applying functions
 - We need to know how many variables there are in each function

@@ -58,26 +58,26 @@ fn void main(String[] args) {
         return;
     }
 
-    // if (catch labels_wrong = output.write_labels(&code)) {
-    //     io::printfn("Failed to write label table to output file: %s", labels_wrong);
-    //     return;
-    // }
-    //
-    // if (catch code_wrong = output.write_code(&code)) {
-    //     io::printfn("Failed to write label table to output file: %s", code_wrong);
-    //     return;
-    // }
-    //
-    // h.l_len    = (uint)output.labels_len;
-    // h.l_tbl    = (uint)output.labels_off;
-    //
-    // if (code.labels.has_key("entry")) {
-    //     usz entry_loc = code.labels.get("entry")!!;
-    //     h.entry = (sz)entry_loc;
-    // } else {
-    //     h.entry = -1;
-    // }
-    //
+    if (catch labels_wrong = output.write_labels(&code)) {
+        io::printfn("Failed to write label table to output file: %s", labels_wrong);
+        return;
+    }
+
+    if (catch code_wrong = output.write_code(&code)) {
+        io::printfn("Failed to write label table to output file: %s", code_wrong);
+        return;
+    }
+
+    h.l_len    = (uint)output.labels_len;
+    h.l_tbl    = (uint)output.labels_off;
+
+    if (code.labels.has_key("entry")) {
+        usz entry_loc = code.labels.get("entry")!!;
+        h.entry = (sz)entry_loc;
+    } else {
+        h.entry = -1;
+    }
+
     if (catch header_wrong = output.write_header(h)) {
         io::printfn("Failed to write updated header to output file: %s", header_wrong);
         return;

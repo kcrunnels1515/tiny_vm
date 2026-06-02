@@ -24,6 +24,15 @@ import tiny_vm::serialize;
 *
 */
 
+faultdef 
+    FAIL_POP_STACK;
+
+struct Closure {
+    usz fn_off;
+    usz env_off;
+    usz env_len;
+}
+
 struct SecdVM {
     char* data;
 
@@ -90,8 +99,76 @@ fn StackManager* StackManager.init(&self) {
     self.s_ptr[0] = serialize::nil_val();
     self.len = 1;
     self.cap = 256;
-    self.cur = { .s_buf = self.s_ptr, .len = self.len };
+    self.cur = { .offset = 0, .len = self.len };
     return self;
+}
+
+fn void StackManager.expand_data(&self) {
+    usz new_cap = self.cap+256;
+    self.s_ptr = mem::realloc(self.s_ptr, new_cap);
+    self.cap = new_cap;
+}
+
+macro StackManager.@expand(&self) {
+    if (self.len > self.cap - 8) {
+        self.expand_data(self);
+    }
+}
+
+// return offset of pushed data
+fn usz StackManager.push_data(&self, Code* code) {
+    usz off_res = -1;
+    StackManager.@expand(self);
+    self.s_ptr[self.len] = *code;
+    off_res = self.len;
+    self.len++;
+    self.cur.len++;
+    return off_res;
+}
+
+fn usz StackManager.push_closure(&self, usz fn_offset, EnvReg cur_env) {
+    StackManager.@expand(self);
+    Code func = serialize::fn_val(fn_offset);
+    Code env  = serialize::env_val(cur_env.offset, cur_env.len);
+    Code closure;
+
+    usz env_off = self.push_data(env);
+    func.next = env_off;
+    usz func_off = self.push_data(func);
+    closure = serialize::list_val(func_off, 2);
+    usz res_off = self.push_data(closure);
+    return off_res;
+}
+
+fn Code? StackManager.pop_data(&self) {
+    Code res;
+    if (self.cur.len == 0) {
+        return FAIL_POP_DATA~;
+    }
+    self.len--;
+    self.cur.len--;
+    res = self.s_ptr[self.cur.len];
+    return res;
+}
+
+// @TODO
+// should probably take as arguments
+// - envmanager
+// - codemanager
+// - dumpmanager
+fn Code? StackManager.pop_closure(&self) {
+    Code res;
+    if (self.cur.len == 0) {
+        return FAIL_POP_DATA~;
+    }
+    self.len--;
+    self.cur.len--;
+    res = self.s_ptr[self.cur.len];
+    return res;
+}
+
+fn void StackManager.destroy(&self) {
+    mem::free(self.s_ptr);
 }
 
 // we assume that we are given the pointer to the beginning of the code,

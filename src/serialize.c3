@@ -62,6 +62,8 @@ enum ValueTag : char
     INSTR,
     LIST,
     SYMB,
+    FUNC,
+    ENV,
 }
 
 const CHUNKLEN = 16;
@@ -124,6 +126,29 @@ fn Code nil_val() {
     Code res;
     res.type = ValueTag.NIL.ordinal;
     return res;
+}
+
+fn Code fn_val(usz offset) {
+    Code fn_res;
+    fn_res.type = ValueTag.FUNC.ordinal;
+    fn_res.arg1 = (sz)offset;
+    return fn_res;
+}
+
+fn Code env_val(usz off, usz len) {
+    Code env_res;
+    env_res.type = ValueTag.ENV.ordinal;
+    env_res.arg1 = (sz)off;
+    env_res.arg2 = (sz)len;
+    return env_res;
+}
+
+fn Code list_val(usz fst, usz len) {
+    Code list_res;
+    list_res.type = ValueTag.LIST.ordinal;
+    list_res.arg1 = (sz)fst;
+    list_res.arg2 = (sz)len;
+    return list_res;
 }
 
 bitstruct Header : char[15] {
@@ -226,8 +251,15 @@ fn void? Serial.write_header(&self, Header h) {
     self.output.seek(0)!;
     char[] bytes = @to_bytes(Header, h);
     self.output.write(bytes)!;
-    // return to original position of writing
-    self.output.seek(self.count)!;
+    // if nothing has been written yet, increment the 
+    // write-count, as the index has moved
+    if (self.count == 0) {
+        self.count += Header::size;
+    } 
+    // otherwise, return to original position of writing
+    else {
+        self.output.seek(self.count)!;
+    }
 }
 
 fn void? Serial.write_strings(&self, StrTable strs) {
