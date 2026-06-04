@@ -10,6 +10,15 @@
         we need to have a state-machine that will recursively copy linked lists
     - this is helped by us storing the length of each list in it's list marker
 
+### I/O
+- add two new: write and read
+- WRITE:
+    - just print out the top element on the stack
+- READ:
+    - parse input, then serialize into a buffer and write it into the 
+        stack
+    - then, we can load values/lists/code
+
 ### Closures
 - we need special `Code` value tags the indicate the value we are storing is a closure
     - `FUNC` and `ENV` code tags

@@ -151,14 +151,15 @@ fn Code list_val(usz fst, usz len) {
     return list_res;
 }
 
-bitstruct Header : char[15] {
+bitstruct Header : char[20] {
     // number of labeled code chunks
     uint l_len  : 0..31;
     // offset of entry point, if it exists
     // value of -1 if this is a library (no entry point)
     sz entry     : 32..95;
     // number of labels
-    uint l_tbl   : 96..119;
+    uint l_tbl   : 96..127;
+    usz code_off : 128..159;
 }
 
 struct Label {
@@ -292,7 +293,7 @@ fn void? Serial.write_labels(&self, CodeMeta* code) {
     };
 }
 
-fn void? Serial.write_code(&self, CodeMeta* code) {
+fn usz? Serial.write_code(&self, CodeMeta* code) {
     usz len = code.code.len();
     usz code_off = self.count;
 
@@ -304,6 +305,7 @@ fn void? Serial.write_code(&self, CodeMeta* code) {
         sz w_sz = self.output.write(bytes)!;
         self.count += (usz)w_sz;
     }
+    return code_off;
 }
 
 fn void? Serial.save(&self) {
@@ -335,4 +337,46 @@ fn StrTable build_string_table(CodeMeta code) {
     return strs;
 }
 
+fn void? serialize_secd(String input_name, String output_name) {
+    Serial output;
+    Header h;
 
+    char[]? input_text = file::load(mem, input_name);
+
+    if (catch fail_open = input_text) {
+        io::printfn("Failed to load input file %s: %s", input_name, fail_open);
+        return;
+    }
+    Spans myspans;
+    myspans.init();
+
+    CodeMeta code = parse::parse_input((String)input_text, myspans)!;
+
+    parse::print_code(myspans.labels, code.code)!;
+    
+    output.init(output_name)!;
+
+    StrTable strs = serialize::build_string_table(code);
+
+    output.write_header(h)!;
+
+    output.write_strings(strs)!;
+
+    output.write_labels(&code)!;
+
+    h.code_off = output.write_code(&code)!;
+
+    h.l_len    = (uint)output.labels_len;
+    h.l_tbl    = (uint)output.labels_off;
+
+    if (code.labels.has_key("entry")) {
+        usz entry_loc = code.labels.get("entry")!!;
+        h.entry = (sz)entry_loc;
+    } else {
+        h.entry = -1;
+    }
+
+    output.write_header(h)!;
+
+    output.save()!;
+}
