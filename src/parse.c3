@@ -760,7 +760,7 @@ fn void? resolve_refs_pass(String input, Spans span_data, List{CodeData}* code) 
 fn void? print_code(HashMap{String, Span*}* labels, List{CodeData}* code) {
     usz len = code.len();
     String[] label_keys = labels.keys(tmem);
-    defer free(label_keys);
+    // defer free(label_keys);
 
     for (usz j = 0; j < label_keys.len; j++) {
         Span* l_span = labels.get(label_keys[j])!;

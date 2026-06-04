@@ -6,7 +6,7 @@ import std::collections::linkedlist;
 import std::collections::map;
 import std::core::mem::allocator;
 import std::io::file;
-import std::io::file_mmap;
+import std::io::file::mmap;
 import std::hash::md5;
 import libc;
 
@@ -31,11 +31,11 @@ fn SecdVM* SecdVM.init(&self, void* file_ptr, sz file_sz) {
     Header code_h = *((Header*) file_ptr);
     Code* code_d = (Code*)((char*)file_ptr + code_h.code_off);
     usz code_sz = (usz)(file_sz - code_h.code_off);
-    sz entry = (code_h.entry < 0) ? -1 : code_h.entry - code_h.code_off;
+    sz entry = (code_h.entry < 0) ? -1 : (sz)(code_h.entry - code_h.code_off);
 
     self.data = (char*)file_ptr;
     self.code.init(code_d, entry, code_sz);
-    self.stach.init();
+    self.stack.init();
     self.env.init();
     self.dump.init();
     return self;
@@ -55,86 +55,173 @@ fn char[] read_string(SecdVM* secd, usz loc, usz len) {
     return str;
 }
 
-
+/*
+*
+* Instruction interpretation instructions
+*
+*
+*/
 fn void? instr_nil(SecdVM* secd, sz arg1, sz arg2) {
+    Code instr = secd.code.read_instr();
+    InstrFn tocall = instrs[instr.op];
+    tocall(secd, instr.arg1, instr.arg2)!;
 }
 
 fn void? instr_ld(SecdVM* secd, sz arg1, sz arg2) {
+    Code instr = secd.code.read_instr();
+    InstrFn tocall = instrs[instr.op];
+    tocall(secd, instr.arg1, instr.arg2)!;
 }
 
 fn void? instr_ldc(SecdVM* secd, sz arg1, sz arg2) {
+    Code instr = secd.code.read_instr();
+    InstrFn tocall = instrs[instr.op];
+    tocall(secd, instr.arg1, instr.arg2)!;
 }
 
 fn void? instr_ldf(SecdVM* secd, sz arg1, sz arg2) {
+    Code instr = secd.code.read_instr();
+    InstrFn tocall = instrs[instr.op];
+    tocall(secd, instr.arg1, instr.arg2)!;
 }
 
 fn void? instr_sel(SecdVM* secd, sz arg1, sz arg2) {
+    Code instr = secd.code.read_instr();
+    InstrFn tocall = instrs[instr.op];
+    tocall(secd, instr.arg1, instr.arg2)!;
 }
 
 fn void? instr_join(SecdVM* secd, sz arg1, sz arg2) {
+    Code instr = secd.code.read_instr();
+    InstrFn tocall = instrs[instr.op];
+    tocall(secd, instr.arg1, instr.arg2)!;
 }
 
 fn void? instr_ap(SecdVM* secd, sz arg1, sz arg2) {
+    Code instr = secd.code.read_instr();
+    InstrFn tocall = instrs[instr.op];
+    tocall(secd, instr.arg1, instr.arg2)!;
 }
 
 fn void? instr_ret(SecdVM* secd, sz arg1, sz arg2) {
+    Code instr = secd.code.read_instr();
+    InstrFn tocall = instrs[instr.op];
+    tocall(secd, instr.arg1, instr.arg2)!;
 }
 
 fn void? instr_dum(SecdVM* secd, sz arg1, sz arg2) {
+    Code instr = secd.code.read_instr();
+    InstrFn tocall = instrs[instr.op];
+    tocall(secd, instr.arg1, instr.arg2)!;
 }
 
 fn void? instr_rap(SecdVM* secd, sz arg1, sz arg2) {
+    Code instr = secd.code.read_instr();
+    InstrFn tocall = instrs[instr.op];
+    tocall(secd, instr.arg1, instr.arg2)!;
 }
 
 fn void? instr_car(SecdVM* secd, sz arg1, sz arg2) {
+    Code instr = secd.code.read_instr();
+    InstrFn tocall = instrs[instr.op];
+    tocall(secd, instr.arg1, instr.arg2)!;
 }
 
 fn void? instr_cdr(SecdVM* secd, sz arg1, sz arg2) {
+    Code instr = secd.code.read_instr();
+    InstrFn tocall = instrs[instr.op];
+    tocall(secd, instr.arg1, instr.arg2)!;
 }
 
 fn void? instr_cons(SecdVM* secd, sz arg1, sz arg2) {
+    Code instr = secd.code.read_instr();
+    InstrFn tocall = instrs[instr.op];
+    tocall(secd, instr.arg1, instr.arg2)!;
 }
 
 fn void? instr_atom(SecdVM* secd, sz arg1, sz arg2) {
+    Code instr = secd.code.read_instr();
+    InstrFn tocall = instrs[instr.op];
+    tocall(secd, instr.arg1, instr.arg2)!;
 }
 
 fn void? instr_eq(SecdVM* secd, sz arg1, sz arg2) {
+    Code instr = secd.code.read_instr();
+    InstrFn tocall = instrs[instr.op];
+    tocall(secd, instr.arg1, instr.arg2)!;
 }
 
 fn void? instr_stop(SecdVM* secd, sz arg1, sz arg2) {
+    // Code instr = secd.code.read_instr();
+    // InstrFn tocall = instrs[instr.op];
+    // tocall(secd, instr.arg1, instr.arg2)!;
+    return;
 }
 
 fn void? instr_add(SecdVM* secd, sz arg1, sz arg2) {
+    Code instr = secd.code.read_instr();
+    InstrFn tocall = instrs[instr.op];
+    tocall(secd, instr.arg1, instr.arg2)!;
 }
 
 fn void? instr_sub(SecdVM* secd, sz arg1, sz arg2) {
+    Code instr = secd.code.read_instr();
+    InstrFn tocall = instrs[instr.op];
+    tocall(secd, instr.arg1, instr.arg2)!;
 }
 
 fn void? instr_mul(SecdVM* secd, sz arg1, sz arg2) {
+    Code instr = secd.code.read_instr();
+    InstrFn tocall = instrs[instr.op];
+    tocall(secd, instr.arg1, instr.arg2)!;
 }
 
 fn void? instr_div(SecdVM* secd, sz arg1, sz arg2) {
+    Code instr = secd.code.read_instr();
+    InstrFn tocall = instrs[instr.op];
+    tocall(secd, instr.arg1, instr.arg2)!;
 }
 
 fn void? instr_mod(SecdVM* secd, sz arg1, sz arg2) {
+    Code instr = secd.code.read_instr();
+    InstrFn tocall = instrs[instr.op];
+    tocall(secd, instr.arg1, instr.arg2)!;
 }
 
 fn void? instr_leq(SecdVM* secd, sz arg1, sz arg2) {
+    Code instr = secd.code.read_instr();
+    InstrFn tocall = instrs[instr.op];
+    tocall(secd, instr.arg1, instr.arg2)!;
 }
 
 fn void? instr_geq(SecdVM* secd, sz arg1, sz arg2) {
+    Code instr = secd.code.read_instr();
+    InstrFn tocall = instrs[instr.op];
+    tocall(secd, instr.arg1, instr.arg2)!;
 }
 
 fn void? instr_lt(SecdVM* secd, sz arg1, sz arg2) {
+    Code instr = secd.code.read_instr();
+    InstrFn tocall = instrs[instr.op];
+    tocall(secd, instr.arg1, instr.arg2)!;
 }
 
 fn void? instr_gt(SecdVM* secd, sz arg1, sz arg2) {
+    Code instr = secd.code.read_instr();
+    InstrFn tocall = instrs[instr.op];
+    tocall(secd, instr.arg1, instr.arg2)!;
 }
 
 fn void? instr_vec(SecdVM* secd, sz arg1, sz arg2) {
+    Code instr = secd.code.read_instr();
+    InstrFn tocall = instrs[instr.op];
+    tocall(secd, instr.arg1, instr.arg2)!;
 }
 
 fn void? instr_sysc(SecdVM* secd, sz arg1, sz arg2) {
+    Code instr = secd.code.read_instr();
+    InstrFn tocall = instrs[instr.op];
+    tocall(secd, instr.arg1, instr.arg2)!;
 }
 
 InstrFn[] instrs = {
@@ -153,7 +240,7 @@ InstrFn[] instrs = {
 	&instr_cons,
 	&instr_atom,
 	&instr_eq,
-	&instr_stop
+	&instr_stop,
 	&instr_add,
 	&instr_sub,
 	&instr_mul,
@@ -180,15 +267,15 @@ fn void main(String[] args) {
         return;
     }
 
-    FileMmap? mmaped = file_mmap::mmap_file(input);
+    FileMmap? mmaped = file::mmap_file(input);
 
     if (catch reason = mmaped) {
         io::printfn("Failed to mmap file: %s", reason);
         return;
     }
 
-    secd.init(mmaped.ptr, mmaped.size);
-    if (catch reason = self.exec()) {
+    secd.init(mmaped.vm.ptr, mmaped.vm.size);
+    if (catch reason = secd.exec()) {
         io::printfn("Execution error: %s", reason);
         return;
     }

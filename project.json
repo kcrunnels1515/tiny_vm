@@ -29,19 +29,21 @@
   // "target": "windows-x64",
   // Targets.
   "targets": {
-   // "tiny_vm": {
-      // Executable or library.
-    //  "type": "executable",
-      // Additional libraries, sources
-      // and overrides of global settings here.
-    //},
     "secd_asm" : {
         "type" : "executable",
         "sources" : [ 
             "src/secdasm.c3",
             "src/parse.c3",
-            "src/serialize.c3" //,
-            //"src/io.c3"
+            "src/serialize.c3"
+        ]
+    },
+    "secd_vm" : {
+        "type" : "executable",
+        "sources" : [ 
+            "src/vm.c3",
+            "src/parse.c3",
+            "src/serialize.c3",
+            "src/vm_state.c3"
         ]
     }
   },

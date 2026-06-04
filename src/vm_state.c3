@@ -77,7 +77,7 @@ struct EnvReg {
 
 struct EnvManager {
     EnvEntry* e_ptr;
-    EvReg cur;
+    EnvReg cur;
     usz len;
     usz cap;
 }
@@ -103,7 +103,7 @@ fn void StackManager.expand_data(&self) {
 
 macro StackManager.@expand(&self) {
     if (self.len > self.cap - 8) {
-        self.expand_data(self);
+        self.expand_data();
     }
 }
 
@@ -124,18 +124,18 @@ fn usz StackManager.push_closure(&self, usz fn_offset, EnvReg cur_env) {
     Code env  = serialize::env_val(cur_env.offset, cur_env.len);
     Code closure;
 
-    usz env_off = self.push_data(env);
+    usz env_off = self.push_data(&env);
     func.next = env_off;
-    usz func_off = self.push_data(func);
+    usz func_off = self.push_data(&func);
     closure = serialize::list_val(func_off, 2);
-    usz res_off = self.push_data(closure);
-    return off_res;
+    usz res_off = self.push_data(&closure);
+    return res_off;
 }
 
 fn Code? StackManager.pop_data(&self) {
     Code res;
     if (self.cur.len == 0) {
-        return FAIL_POP_DATA~;
+        return FAIL_POP_STACK~;
     }
     self.len--;
     self.cur.len--;
@@ -146,7 +146,7 @@ fn Code? StackManager.pop_data(&self) {
 // returns old stack frame
 fn StackReg StackManager.new_frame(&self) {
     StackReg old = self.cur;
-    StackManager.@expand(self);
+    self.@expand();
 
     self.s_ptr[self.len] = serialize::nil_val();
     self.cur = { .offset = self.len, .len = 1 };
@@ -177,16 +177,12 @@ fn void StackManager.destroy(&self) {
 fn Code? StackManager.pop_closure(&self) {
     Code res;
     if (self.cur.len == 0) {
-        return FAIL_POP_DATA~;
+        return FAIL_POP_STACK~;
     }
     self.len--;
     self.cur.len--;
     res = self.s_ptr[self.cur.len];
     return res;
-}
-
-fn void StackManager.destroy(&self) {
-    mem::free(self.s_ptr);
 }
 
 fn void StackManager.print(&self) {
@@ -199,7 +195,7 @@ fn void StackManager.print(&self) {
 fn CodeManager* CodeManager.init(&self, Code* input_data, sz entry, usz len) {
     self.c_ptr = input_data;
     self.len = len;
-    self.cur = { .c_buf = self.c_ptr, .ip = entry };
+    self.cur = { .offset = 0, .ip = entry };
     return self;
 }
 
@@ -254,6 +250,7 @@ fn EnvManager* EnvManager.init(&self) {
     self.len = 0;
     self.dummy_env();
     self.cur = { .offset = 0, .len = 0 };
+    return self;
 }
 
 fn void EnvManager.resize(&self) {
@@ -298,6 +295,6 @@ fn VMState? Dump.pop(&self, CodeManager* c, StackManager* s, EnvManager* e) {
     VMState res_st;
     res_st.s_reg = s.restore_frame(st.s_reg)!;
     res_st.e_reg = e.restore_env(st.e_reg);
-    res_st.c_reg = c.set_ip(st.e_reg);
+    res_st.c_reg = c.set_ip(st.c_reg);
     return res_st;
 }
