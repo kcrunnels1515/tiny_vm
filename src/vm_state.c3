@@ -26,7 +26,9 @@ import tiny_vm::serialize;
 
 faultdef 
     FAIL_POP_STACK,
-    STACK_UNDERFLOW;
+    STACK_UNDERFLOW,
+    READ_OOB,
+    NOT_INSTR;
 
 struct Closure {
     usz fn_off;
@@ -211,6 +213,27 @@ fn Code CodeManager.read_instr(&self) {
     return cur_instr;
 }
 
+fn Code CodeManager.read_instr_at(&self, sz loc, sz* alt_next) {
+    if (loc >= self.len) {
+        return READ_OOB~;
+    }
+    Code cur_instr = self.c_ptr[loc];
+    if (cur_instr.type != ValueTag.INSTR.ordinal) {
+        return NOT_INSTR~;
+    }
+    *alt_next = self.cur.ip;
+    self.cur.ip = cur_instr.next;
+    return cur_instr;
+}
+
+fn Code? CodeManager.read_data(&self, sz loc)
+{
+    if (loc >= self.len) {
+        return READ_OOB~;
+    }
+    Code data_at = self.c_ptr[loc];
+    return data_at;
+}
 
 // fn void CodeManager.set_ip(&self, usz off) {
 //     self.cur.ip = off;
@@ -287,6 +310,11 @@ fn Dump* Dump.init(&self, Allocator a = mem) {
 
 fn void Dump.push(&self, CodeManager* c, StackManager* s, EnvManager* e) {
     VMState st = { .c_reg = c.cur, .s_reg = s.cur, .e_reg = e.cur };
+    self.states.push(st);
+}
+
+fn void Dump.push(&self, CodeReg c, StackReg s, EnvReg e) {
+    VMState st = { .c_reg = c, .s_reg = s, .e_reg = e };
     self.states.push(st);
 }
 

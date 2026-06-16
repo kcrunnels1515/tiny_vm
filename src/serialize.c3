@@ -135,6 +135,21 @@ fn Code fn_val(usz offset) {
     return fn_res;
 }
 
+fn Code int_val(long iVal) {
+    Code i_res;
+    i_res.type = ValueTag.INT.ordinal;
+    i_res.data = iVal;
+    return i_res;
+}
+
+fn Code float_val(double fVal) {
+    Code f_res;
+    double* f_ptr = (double*)&f_res;
+    f_res.type = ValueTag.FLOAT.ordinal;
+    f_ptr[1] = fVal;
+    return f_res;
+}
+
 fn Code env_val(usz off, usz len) {
     Code env_res;
     env_res.type = ValueTag.ENV.ordinal;
